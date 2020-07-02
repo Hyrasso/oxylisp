@@ -1,0 +1,7 @@
+[package]
+name = "oxylisp"
+version = "0.1.0"
+authors = ["Grégoire de Massé <demasse.gregoire@yahoo.fr>"]
+edition = "2018"
+
+[dependencies]
