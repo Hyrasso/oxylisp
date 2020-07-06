@@ -13,7 +13,9 @@ pub enum Exp {
     Int(i64),
     Float(f64),
     Symbol(String),
-    List(Vec<Exp>)
+    List(Vec<Exp>),
+    // probably split between tokens and interpreter types
+    Lambda(Exp, Vec<Exp::Symbol>)
 }
 
 impl From<&str> for Exp {
