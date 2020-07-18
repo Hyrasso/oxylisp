@@ -1,9 +1,9 @@
 use crate::parser::*;
 use std::collections::HashMap;
-// use Box;
+use std::rc::Rc;
+use std::cell::RefCell;
 
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Exp {
     Int(i64),
     Float(f64),
@@ -47,7 +47,7 @@ mod test {
         assert!(exp_from_tokens(&mut prog).is_err());
 
         
-        let mut prog: Vec<Token> = tokenize("(print 1 (+ 1 2))");
+        let mut prog: Vec<Token> = tokenize("(print 1 (+ 1 2)) ()");
         assert!(exp_from_tokens(&mut prog).is_ok());
     }
 }
@@ -62,7 +62,90 @@ mod test {
 
 
 // TODO: environment
-pub type Env = HashMap<String, Exp>;
+// TODO: first global env for everyone, overwrite everything no recursive lookup
+pub type EnvMap = HashMap<String, Exp>;
+
+#[derive(Debug)]
+pub struct Env {
+    parent: Option<Rc<Env>>,
+    local: RefCell<EnvMap>
+}
+
+type EnvRcRefCell = Rc<RefCell<Env>>;
+
+impl Env {
+    fn new() -> Self {
+        Env {
+            parent: None,
+            local: RefCell::new(EnvMap::new())
+        }
+    }
+
+    fn new_with_parent(parent: &Rc<Env>) -> Self {
+        Env {
+            parent: Some(Rc::clone(parent)),
+            local: RefCell::new(EnvMap::new())
+        }
+    }
+
+    fn insert(&self, key: String, value: Exp) -> Option<Exp> {
+        self.local.borrow_mut().insert(key, value)
+    }
+
+    /// Returns cloned value of the env object,  
+    /// TODO: returns an error if key doens not exists
+    ///       with somting like Result<Exp, EnvKeyError>
+    fn get(&self, key: &str) -> Exp {
+        let local = self.local.borrow();
+        if let Some(value) = local.get(key) {
+            value.clone()
+        } else {
+            if let Some(parent) = &self.parent {
+                parent.get(key)
+            } else {
+                panic!("Add error handling here")
+            }
+        }
+    }
+}
+mod test_env {
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        let env = Rc::new(Env::new());
+
+        let _child_env = Env::new_with_parent(&env);
+    }
+
+    
+    #[test]
+    fn test_insert() {
+        let env = Rc::new(Env::new());
+        let child_env = Env::new_with_parent(&env);
+
+        env.insert("key".to_owned(), Exp::Int(1));
+        child_env.insert("key".to_owned(), Exp::Int(1));
+
+    }
+
+    fn test_get() {
+        let env = Rc::new(Env::new());
+        let child_env = Env::new_with_parent(&env);
+
+        env.insert("key".to_owned(), Exp::Int(0));
+        env.insert("parent_key".to_owned(), Exp::Int(0));
+
+        child_env.insert("key".to_owned(), Exp::Int(1));
+        
+        assert_eq!(child_env.get("key"), Exp::Int(1));
+        assert_eq!(env.get("key"), Exp::Int(0));
+        
+        // assert_eq!(child_env.get("parent_key"), Exp::Int(0));
+        assert_eq!(env.get("parent_key"), Exp::Int(0));
+
+    }
+}
 
 // TODO: global builtins env/or tree env structure instead of hasmap/struct wiht parent env to lookup in case
 // static global_env
@@ -72,15 +155,18 @@ fn is_true(exp: Exp) -> bool {
     match exp {
         Exp::Float(value) => value != 0.0,
         Exp::Int(value) => value != 0,
-        _ => false
+        Exp::Symbol(_) | Exp::List(_) => false
     }
 }
 
-pub fn eval(expression: Exp, environment: &mut Env) -> Exp {
+// change to result to handle runtime errors
+pub fn eval(expression: Exp, environment: &Env) -> Exp {
     match expression.clone() {
         Exp::List(expressions) => {
             match expressions[0].clone() {
                 // Exp::Lambda(body, arguments) => {
+                //     // lambda env is parent env, create local env for body execution, with outer: lambda env
+                //     // local scope can be saved, probably needs some reference counting
                 //     let new_env = arguments.zip(expression[1..]).collect();
                 //     new_env.extend(environment);
                 //     eval(body, new_env)
@@ -88,7 +174,7 @@ pub fn eval(expression: Exp, environment: &mut Env) -> Exp {
                 Exp::Symbol(symbol) => {
                     match symbol.as_str() {
                         "if" => {
-                            let exp = if is_true(expressions[1].clone()) {
+                            let exp = if is_true(eval(expressions[1].clone(), environment)) {
                                 &expressions[2]
                             } else {
                                 &expressions[3]
@@ -100,7 +186,7 @@ pub fn eval(expression: Exp, environment: &mut Env) -> Exp {
                                 let value = &expressions[2];
                                 let value = eval(value.clone(), environment);
                                 environment.insert(name.clone(), value.clone());
-                                environment.get(name).unwrap().clone()
+                                environment.get(name)
                             } else {
                                 panic!();
                             }
@@ -117,10 +203,69 @@ pub fn eval(expression: Exp, environment: &mut Env) -> Exp {
                         _ => expression
                     }
                 },
+                // sould be an error, returns only first number of list
                 number => number
             }
         },
-        Exp::Symbol(symbol) => environment.get(&symbol).unwrap().clone(),
+        Exp::Symbol(symbol) => environment.get(&symbol),
         number => number
+    }
+}
+
+#[derive(Debug)]
+pub struct Interpreter {
+    environment: Rc<Env>
+}
+
+// // todo: populate global env with functions
+// pub fn make_std_env() {
+//
+// }
+
+impl Interpreter {
+    pub fn new() -> Self {
+        Interpreter {
+            environment: Rc::new(Env::new())
+        }
+    }
+
+    pub fn eval(&mut self, expression: Exp) -> Exp {
+        // "get_mut panic if more than 2 references to it"
+        // see rust implementation in readme (it uses rc for env) or switch to refcell
+        eval(expression, &self.environment)
+    }
+
+    pub fn run(&mut self, code: &str) -> Exp {
+        let mut tokens = tokenize(code);
+        let expression = exp_from_tokens(&mut tokens).unwrap();
+        self.eval(expression)
+    }
+}
+
+mod test_interpreter {
+    use super::*;
+
+    #[test]
+    fn test_define() {
+        let mut interpreter = Interpreter::new();
+        let res = interpreter.run("(define a 2)");
+        assert_eq!(res, Exp::Int(2));
+
+        let env = interpreter.environment;
+        let res = env.get("a");
+        assert_eq!(res, Exp::Int(2));
+    }
+
+    #[test]
+    fn test_if() {
+        let mut interpreter = Interpreter::new();
+        let code = "(if 1 1 0)";
+        let res = interpreter.run(code);
+        assert_eq!(res, Exp::Int(1));
+
+        let code = "(if 0 1 0)";
+        let res = interpreter.run(code);
+        assert_eq!(res, Exp::Int(0));
+
     }
 }
