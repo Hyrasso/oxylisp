@@ -12,6 +12,8 @@ Grammar: https://www.scheme.com/tspl4/grammar.html#./grammar:h0
 
 forms: https://www.scheme.com/tspl4/summary.html#./summary:h0
 
+lisp in lisp, metacircular thingy : https://mitpress.mit.edu/sites/default/files/sicp/full-text/book/book-Z-H-26.html#%_sec_4.1
+
 # TODOs
 
 - [ ] : everything in there: http://norvig.com/lispy2.html
