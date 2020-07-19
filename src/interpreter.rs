@@ -1,7 +1,8 @@
-use crate::parser::*;
+use super::parser::*;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::fmt::{self, Formatter, Display};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Exp {
@@ -95,15 +96,15 @@ impl Env {
     /// Returns cloned value of the env object,  
     /// TODO: returns an error if key doens not exists
     ///       with somting like Result<Exp, EnvKeyError>
-    fn get(&self, key: &str) -> Exp {
+    fn get(&self, key: &str) -> Result<Exp, Error> {
         let local = self.local.borrow();
         if let Some(value) = local.get(key) {
-            value.clone()
+            Ok(value.clone())
         } else {
             if let Some(parent) = &self.parent {
                 parent.get(key)
             } else {
-                panic!("Add error handling here")
+                Err(Error::UndefinedSymbol(key.to_string()))
             }
         }
     }
@@ -129,6 +130,7 @@ mod test_env {
 
     }
 
+    #[test]
     fn test_get() {
         let env = Rc::new(Env::new());
         let child_env = Env::new_with_parent(&env);
@@ -137,13 +139,16 @@ mod test_env {
         env.insert("parent_key".to_owned(), Exp::Int(0));
 
         child_env.insert("key".to_owned(), Exp::Int(1));
-        
-        assert_eq!(child_env.get("key"), Exp::Int(1));
-        assert_eq!(env.get("key"), Exp::Int(0));
-        
-        // assert_eq!(child_env.get("parent_key"), Exp::Int(0));
-        assert_eq!(env.get("parent_key"), Exp::Int(0));
+        child_env.insert("children_key".to_owned(), Exp::Int(0));
 
+        
+        assert_eq!(child_env.get("key").unwrap(), Exp::Int(1));
+        assert_eq!(env.get("key").unwrap(), Exp::Int(0));
+        
+        assert_eq!(child_env.get("parent_key").unwrap(), Exp::Int(0));
+        assert_eq!(env.get("parent_key").unwrap(), Exp::Int(0));
+        
+        assert!(env.get("children_key").is_err());
     }
 }
 
@@ -160,7 +165,7 @@ fn is_true(exp: Exp) -> bool {
 }
 
 // change to result to handle runtime errors
-pub fn eval(expression: Exp, environment: &Env) -> Exp {
+fn eval(expression: Exp, environment: &Env) -> Result<Exp, Error> {
     match expression.clone() {
         Exp::List(expressions) => {
             match expressions[0].clone() {
@@ -174,7 +179,7 @@ pub fn eval(expression: Exp, environment: &Env) -> Exp {
                 Exp::Symbol(symbol) => {
                     match symbol.as_str() {
                         "if" => {
-                            let exp = if is_true(eval(expressions[1].clone(), environment)) {
+                            let exp = if is_true(eval(expressions[1].clone(), environment)?) {
                                 &expressions[2]
                             } else {
                                 &expressions[3]
@@ -184,7 +189,7 @@ pub fn eval(expression: Exp, environment: &Env) -> Exp {
                         "define" => {
                             if let Exp::Symbol(name) = &expressions[1] {
                                 let value = &expressions[2];
-                                let value = eval(value.clone(), environment);
+                                let value = eval(value.clone(), environment)?;
                                 environment.insert(name.clone(), value.clone());
                                 environment.get(name)
                             } else {
@@ -200,15 +205,34 @@ pub fn eval(expression: Exp, environment: &Env) -> Exp {
                         //     let args = expression[1..].map(|exp| eval(exp, environment)).collect();
                         //     environment[&symbol].call(args)
                         // }
-                        _ => expression
+                        _ => Ok(expression)
                     }
                 },
                 // sould be an error, returns only first number of list
-                number => number
+                // Unexcpected token
+                Exp::Float(_) | Exp::Int(_) => Err(Error::SyntaxError),
+                Exp::List(_expr) => Err(Error::NotImplemented)
             }
         },
         Exp::Symbol(symbol) => environment.get(&symbol),
-        number => number
+        number => Ok(number)
+    }
+}
+
+#[derive(Debug)]
+pub enum Error {
+    UndefinedSymbol(String),
+    SyntaxError,
+    NotImplemented
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Error::UndefinedSymbol(symbol) => write!(f, "Symbol not defined: {}", symbol),
+            Error::SyntaxError => write!(f, "Syntax Error somwhere"),
+            Error::NotImplemented => write!(f, "No implementation for this case (who knows what this refers to)")
+        }
     }
 }
 
@@ -229,13 +253,13 @@ impl Interpreter {
         }
     }
 
-    pub fn eval(&mut self, expression: Exp) -> Exp {
+    pub fn eval(&mut self, expression: Exp) -> Result<Exp, Error> {
         // "get_mut panic if more than 2 references to it"
         // see rust implementation in readme (it uses rc for env) or switch to refcell
         eval(expression, &self.environment)
     }
 
-    pub fn run(&mut self, code: &str) -> Exp {
+    pub fn run(&mut self, code: &str) -> Result<Exp, Error> {
         let mut tokens = tokenize(code);
         let expression = exp_from_tokens(&mut tokens).unwrap();
         self.eval(expression)
@@ -248,11 +272,11 @@ mod test_interpreter {
     #[test]
     fn test_define() {
         let mut interpreter = Interpreter::new();
-        let res = interpreter.run("(define a 2)");
+        let res = interpreter.run("(define a 2)").unwrap();
         assert_eq!(res, Exp::Int(2));
 
         let env = interpreter.environment;
-        let res = env.get("a");
+        let res = env.get("a").unwrap();
         assert_eq!(res, Exp::Int(2));
     }
 
@@ -260,11 +284,11 @@ mod test_interpreter {
     fn test_if() {
         let mut interpreter = Interpreter::new();
         let code = "(if 1 1 0)";
-        let res = interpreter.run(code);
+        let res = interpreter.run(code).unwrap();
         assert_eq!(res, Exp::Int(1));
 
         let code = "(if 0 1 0)";
-        let res = interpreter.run(code);
+        let res = interpreter.run(code).unwrap();
         assert_eq!(res, Exp::Int(0));
 
     }
