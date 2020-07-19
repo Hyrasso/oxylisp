@@ -4,6 +4,14 @@ Implementation from http://norvig.com/lispy.html
 
 Example of impl in rust: https://stopa.io/post/222
 
+Seems like it is not exactly mit scheme?
+
+Sceme book: https://www.scheme.com/tspl4/
+
+Grammar: https://www.scheme.com/tspl4/grammar.html#./grammar:h0
+
+forms: https://www.scheme.com/tspl4/summary.html#./summary:h0
+
 # TODOs
 
 - [x] a repl
@@ -11,6 +19,7 @@ Example of impl in rust: https://stopa.io/post/222
 - [ ] executing from files
 - [ ] refactor: how does interpreter, env and eval relates to each other code wise  
     improve exp generation from string, clumsy (exp_from_token seems a bit weird and not in the right place)
+- [ ] : explore the use of Rc::clone each time eval is called, might not be necessary
 
 ## interpreter.rs
 - [x] define what is environment (hashmap string -> Exp)
@@ -20,6 +29,7 @@ Example of impl in rust: https://stopa.io/post/222
 - [ ] what does sould eval do : takes Exp returns Result< Exp>
 - implement lambda, set, quote
 - implement some std funct (maths, comp is a good start), see for things with side effects (print, i/o)  
+    std funct needs either a new exp type or maybe they could be inplemented alongsid if, define, ... 
     Should std function have a different Exp variant than runtime created lambda? relates to lambda implementation iguess
     - maths (+-/*)
     - comp (><=)

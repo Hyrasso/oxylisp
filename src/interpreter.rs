@@ -2,7 +2,29 @@ use super::parser::*;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::fmt::{self, Formatter, Display};
+use std::fmt::{self, Formatter, Display, Debug};
+
+#[derive(Clone)]
+pub struct Lambda {
+    body: Box<Exp>,
+    arguments: Vec<String>,
+    environment: Rc<Env>
+}
+
+impl PartialEq for Lambda {
+    fn eq(&self, _other: &Self) -> bool {
+        // TODO: in some cases maybe they can be the same?
+        false
+    }
+}
+
+// printing is self refecrencial if lambda is in the parent env
+// ex (define f (lambda (x) x)), diplaying f display parent env in which f is defined ...
+impl Debug for Lambda {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "Lambda {{ body: {:?}, arguments: {:?}, environment: Env }}", self.body, self.arguments)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Exp {
@@ -10,8 +32,8 @@ pub enum Exp {
     Float(f64),
     Symbol(String),
     List(Vec<Exp>),
-    // probably split between tokens and interpreter types
-    // Lambda(Box<Exp>, Vec<String>)
+    Lambda(Lambda)
+    // Builtin(BuiltinProc)
 }
 
 
@@ -62,8 +84,6 @@ mod test {
 // }
 
 
-// TODO: environment
-// TODO: first global env for everyone, overwrite everything no recursive lookup
 pub type EnvMap = HashMap<String, Exp>;
 
 #[derive(Debug)]
@@ -93,9 +113,7 @@ impl Env {
         self.local.borrow_mut().insert(key, value)
     }
 
-    /// Returns cloned value of the env object,  
-    /// TODO: returns an error if key doens not exists
-    ///       with somting like Result<Exp, EnvKeyError>
+    /// Returns cloned value of the env object
     fn get(&self, key: &str) -> Result<Exp, Error> {
         let local = self.local.borrow();
         if let Some(value) = local.get(key) {
@@ -152,66 +170,98 @@ mod test_env {
     }
 }
 
-// TODO: global builtins env/or tree env structure instead of hasmap/struct wiht parent env to lookup in case
-// static global_env
-// fn lookeup(local env) -> Exp
-
+// Is lambda true or false, does it make sens, maybe should be an error
 fn is_true(exp: Exp) -> bool {
     match exp {
         Exp::Float(value) => value != 0.0,
         Exp::Int(value) => value != 0,
-        Exp::Symbol(_) | Exp::List(_) => false
+        Exp::Symbol(_) | Exp::List(_) | Exp::Lambda(_) => false
     }
 }
 
 // change to result to handle runtime errors
-fn eval(expression: Exp, environment: &Env) -> Result<Exp, Error> {
-    match expression.clone() {
+fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
+    match expression {
         Exp::List(expressions) => {
-            match expressions[0].clone() {
-                // Exp::Lambda(body, arguments) => {
-                //     // lambda env is parent env, create local env for body execution, with outer: lambda env
-                //     // local scope can be saved, probably needs some reference counting
-                //     let new_env = arguments.zip(expression[1..]).collect();
-                //     new_env.extend(environment);
-                //     eval(body, new_env)
-                // },
+            let (first, rest) = expressions.split_first().unwrap();
+            match first {
+                Exp::Lambda(lambda) => {
+                    let new_env = Rc::new(Env::new_with_parent(&lambda.environment));
+                    // add argument -> eval exp1, exp2.. to local env 
+                    for (key, value) in lambda.arguments.iter().zip(rest.into_iter()) {
+                        new_env.insert(key.to_string(), eval(value.clone(), Rc::clone(&environment))?);
+                    }
+                    // new env is dropped if no reference to it is made
+                    eval(*lambda.body.clone(), new_env)
+                },
                 Exp::Symbol(symbol) => {
                     match symbol.as_str() {
                         "if" => {
-                            let exp = if is_true(eval(expressions[1].clone(), environment)?) {
-                                &expressions[2]
+                            let exp = if is_true(eval(rest[0].clone(), Rc::clone(&environment))?) {
+                                &rest[1]
                             } else {
-                                &expressions[3]
+                                &rest[2]
                             };
                             eval(exp.clone(), environment)
                         },
                         "define" => {
-                            if let Exp::Symbol(name) = &expressions[1] {
-                                let value = &expressions[2];
-                                let value = eval(value.clone(), environment)?;
+                            if let Exp::Symbol(name) = &rest[0] {
+                                let value = &rest[1];
+                                let value = eval(value.clone(), Rc::clone(&environment))?;
                                 environment.insert(name.clone(), value.clone());
                                 environment.get(name)
                             } else {
-                                panic!();
+                                Err(Error::SyntaxError)
                             }
+                        },
+                        "lambda" => {
+                            let mut arguments = vec![];
+                            if let Exp::List(args) = rest[0].clone() {
+                                for arg in args {
+                                    if let Exp::Symbol(arg_symbol) = arg {
+                                        arguments.push(arg_symbol);
+                                    } else {
+                                        // sould be only symbols
+                                        return Err(Error::SyntaxError);
+                                    }
+                                }
+                            } else {
+                                // should be a list of args
+                                return Err(Error::SyntaxError);
+                            }
+                            let lambda = Lambda {
+                                body: Box::new(rest[1].clone()),
+                                arguments,
+                                environment: Rc::new(Env::new_with_parent(&environment))
+                            };
+                            Ok(Exp::Lambda(lambda))
                         }
                         // Exp::Symbol(symbol) if &symbol == "lambda" => {
                         //     let arguments = expression[1];
                         //     let body = expression[2];
                         //     Exp::Lambda(arguments, body)
+                            // lambda env is parent env, create local env for body execution, with outer: lambda env
+                            // local scope can be saved, probably needs some reference counting
+                            // let new_env = arguments.zip(expression[1..]).collect();
+                            // new_env.extend(environment);
+                            // eval(body, new_env)
                         // },
-                        // symbol => {
-                        //     let args = expression[1..].map(|exp| eval(exp, environment)).collect();
-                        //     environment[&symbol].call(args)
-                        // }
-                        _ => Ok(expression)
+                        symbol => {
+                            let mut exp_list = vec![environment.get(symbol)?];
+                            exp_list.extend_from_slice(rest);
+                            eval(Exp::List(exp_list), environment)
+                        }
+                        // _ => Err(Error::SyntaxError)
                     }
                 },
                 // sould be an error, returns only first number of list
                 // Unexcpected token
                 Exp::Float(_) | Exp::Int(_) => Err(Error::SyntaxError),
-                Exp::List(_expr) => Err(Error::NotImplemented)
+                Exp::List(expr) => {
+                    let mut expr_list = vec![eval(Exp::List(expr.to_vec()), Rc::clone(&environment))?];
+                    expr_list.extend_from_slice(rest);
+                    eval(Exp::List(expr_list), environment)
+                }
             }
         },
         Exp::Symbol(symbol) => environment.get(&symbol),
@@ -241,10 +291,6 @@ pub struct Interpreter {
     environment: Rc<Env>
 }
 
-// // todo: populate global env with functions
-// pub fn make_std_env() {
-//
-// }
 
 impl Interpreter {
     pub fn new() -> Self {
@@ -256,7 +302,7 @@ impl Interpreter {
     pub fn eval(&mut self, expression: Exp) -> Result<Exp, Error> {
         // "get_mut panic if more than 2 references to it"
         // see rust implementation in readme (it uses rc for env) or switch to refcell
-        eval(expression, &self.environment)
+        eval(expression, Rc::clone(&self.environment))
     }
 
     pub fn run(&mut self, code: &str) -> Result<Exp, Error> {
@@ -291,5 +337,13 @@ mod test_interpreter {
         let res = interpreter.run(code).unwrap();
         assert_eq!(res, Exp::Int(0));
 
+    }
+
+    #[test]
+    fn test_lambda() {
+        let mut interpreter = Interpreter::new();
+        let code = "((lambda (x) x) 10)";
+        let res = interpreter.run(code).unwrap();
+        assert_eq!(res, Exp::Int(10));
     }
 }

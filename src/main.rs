@@ -16,7 +16,7 @@ fn main() {
 }
 
 fn print_repl_input() {
-    print!("isitlispyet> ");
+    print!("|isitlispyet> ");
     io::stdout().flush().unwrap();
 }
 
