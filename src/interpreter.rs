@@ -232,7 +232,7 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                             let lambda = Lambda {
                                 body: Box::new(rest[1].clone()),
                                 arguments,
-                                environment: Rc::new(Env::new_with_parent(&environment))
+                                environment: Rc::clone(&environment)
                             };
                             Ok(Exp::Lambda(lambda))
                         }
