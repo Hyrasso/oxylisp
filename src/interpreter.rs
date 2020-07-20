@@ -126,6 +126,21 @@ impl Env {
             }
         }
     }
+
+    // TODO: probably some refactorisation could be done
+    fn set(&self, key: &str, value: Exp) -> Result<Exp, Error> {
+        // let local = self.local.borrow();
+        let mut local = self.local.borrow_mut();
+        if local.get(key).is_some() {
+            Ok(local.insert(key.to_string(), value).unwrap())
+        } else {
+            if let Some(parent) = &self.parent {
+                parent.set(key, value)
+            } else {
+                Err(Error::UndefinedSymbol(key.to_string()))
+            }
+        }
+    }
 }
 mod test_env {
     use super::*;
@@ -183,6 +198,7 @@ fn is_true(exp: Exp) -> bool {
 fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
     match expression {
         Exp::List(expressions) => {
+            // TODO: check that the number of exp in the list is coherent for each keyword
             let (first, rest) = expressions.split_first().unwrap();
             match first {
                 Exp::Lambda(lambda) => {
@@ -213,6 +229,16 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                             } else {
                                 Err(Error::SyntaxError)
                             }
+                        },
+                        "set!" => {
+                            if let Exp::Symbol(name) = &rest[0] {
+                                environment.set(name, eval(rest[1].clone(), Rc::clone(&environment))?)
+                            } else {
+                                Err(Error::SyntaxError)
+                            }
+                        },
+                        "quote" => {
+                            Ok(rest[0].clone())
                         },
                         "lambda" => {
                             let mut arguments = vec![];
@@ -327,6 +353,17 @@ mod test_interpreter {
     }
 
     #[test]
+    fn test_set() {
+        let mut interpreter = Interpreter::new();
+        let res = interpreter.run("(define a 2)").unwrap();
+        let res = interpreter.run("(set! a 1)").unwrap();
+        assert_eq!(res, Exp::Int(2));
+        
+        let res = interpreter.run("a").unwrap();
+        assert_eq!(res, Exp::Int(1));
+    }
+
+    #[test]
     fn test_if() {
         let mut interpreter = Interpreter::new();
         let code = "(if 1 1 0)";
@@ -345,5 +382,13 @@ mod test_interpreter {
         let code = "((lambda (x) x) 10)";
         let res = interpreter.run(code).unwrap();
         assert_eq!(res, Exp::Int(10));
+    }
+
+    #[test]
+    fn test_quote() {
+        let mut interpreter = Interpreter::new();
+        let code = "(quote (define a 1))";
+        let res = interpreter.run(code).unwrap();
+        assert_eq!(res, Exp::List(vec![Exp::Symbol("define".to_string()), Exp::Symbol("a".to_string()), Exp::Int(1)]));
     }
 }
