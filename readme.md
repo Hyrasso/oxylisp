@@ -4,9 +4,9 @@ Implementation from http://norvig.com/lispy.html
 
 Example of impl in rust: https://stopa.io/post/222
 
-Seems like it is not exactly mit scheme?
+Scheme : https://en.wikipedia.org/wiki/Scheme_(programming_language)
 
-Sceme book: https://www.scheme.com/tspl4/
+Scheme book: https://www.scheme.com/tspl4/
 
 Grammar: https://www.scheme.com/tspl4/grammar.html#./grammar:h0
 
@@ -32,16 +32,19 @@ lisp in lisp, metacircular thingy : https://mitpress.mit.edu/sites/default/files
 - [x] what does eval do : takes Exp returns Exp
 - [x] what does sould eval do : takes Exp returns Result< Exp>
     - [ ] : better errors, giving actual info
-- implement keywords set!, quote, begin ...
+- implement Fundamental forms: ✓ define, ✓ lambda, ✓ quote, ✓ if, define-syntax, let-syntax, letrec-syntax, syntax-rules, ✓ set!
 - implement some std funct (maths, comp is a good start), see for things with side effects (print, i/o)  
     std funct needs either a new exp type or maybe they could be implemented alongside keywords like if, define, ... 
     - maths (+-/*)
     - comp (><=)
     - bool (not and or)
-    - array/vector/linkedlist manipulation (can use default exp::list, but can be mixed type)
+    - array/vector/linkedlist manipulation (can use default exp::list, but can be mixed type)  
+        lambda calculus way to implement pair : https://en.wikipedia.org/wiki/Cons (from then we can build linked list and binary trees and probably more)
     - stdin/stdout (print, fopen, write, read) (needs some string/char and array type)
 
 ## integration tests suite for basic lisp programs
-- tests
+- tests  
+    https://github.com/ashinn/chibi-scheme/tree/master/tests  
+    http://git.savannah.gnu.org/cgit/guile.git/tree/test-suite/tests
 - learn some lisp
 - separate test files/ or split interpreter and env, interpreter is getting very confusing

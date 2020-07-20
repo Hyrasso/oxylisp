@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt::{self, Formatter, Display, Debug};
+// at some point will probably need to replace some vec with linked list
+// use std::collections::LinkedList;
 
 #[derive(Clone)]
 pub struct Lambda {
@@ -185,12 +187,11 @@ mod test_env {
     }
 }
 
-// Is lambda true or false, does it make sens, maybe should be an error
+
 fn is_true(exp: Exp) -> bool {
     match exp {
-        Exp::Float(value) => value != 0.0,
-        Exp::Int(value) => value != 0,
-        Exp::Symbol(_) | Exp::List(_) | Exp::Lambda(_) => false
+        Exp::Symbol("#f") => false,
+        _ => true
     }
 }
 
@@ -198,14 +199,30 @@ fn is_true(exp: Exp) -> bool {
 fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
     match expression {
         Exp::List(expressions) => {
-            // TODO: check that the number of exp in the list is coherent for each keyword
+            // TODO: add some syntax check 
+            // ex check that the number of exp in the list is coherent for each keyword
+            // lookup rust slice pattern, something like [a, b, c] = rest
             let (first, rest) = expressions.split_first().unwrap();
             match first {
                 Exp::Lambda(lambda) => {
                     let new_env = Rc::new(Env::new_with_parent(&lambda.environment));
                     // add argument -> eval exp1, exp2.. to local env 
-                    for (key, value) in lambda.arguments.iter().zip(rest.into_iter()) {
+                    let mut args_iter = lambda.arguments.split(|symbol| symbol == ".");
+                    let args = args_iter.next().unwrap();
+                    for (key, value) in args.iter().zip(rest.into_iter()) {
                         new_env.insert(key.to_string(), eval(value.clone(), Rc::clone(&environment))?);
+                    }
+                    if let Some(varargs) = args_iter.next() {
+                        let vararg_name = varargs.first().ok_or(Error::SyntaxError)?;
+                        // evaluate all the exp before passing them
+                        let mut values = vec![];
+                        for arg in rest[args.len()..].iter() {
+                            values.push(eval(arg.clone(), Rc::clone(&environment))?);
+                        }
+                        new_env.insert(vararg_name.clone(), Exp::List(values));
+                        if args_iter.next().is_some() {
+                            return Err(Error::SyntaxError);
+                        }
                     }
                     // new env is dropped if no reference to it is made
                     eval(*lambda.body.clone(), new_env)
@@ -242,19 +259,26 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                         },
                         "lambda" => {
                             let mut arguments = vec![];
-                            if let Exp::List(args) = rest[0].clone() {
-                                for arg in args {
-                                    if let Exp::Symbol(arg_symbol) = arg {
-                                        arguments.push(arg_symbol);
-                                    } else {
-                                        // sould be only symbols
-                                        return Err(Error::SyntaxError);
+                            // (lambda (. a) a) is a valid syntax for now
+                            // equivalent to (lambda a a)
+                            match rest[0].clone() {
+                                Exp::List(args) => {
+                                    for arg in args {
+                                        if let Exp::Symbol(arg_symbol) = arg {
+                                            arguments.push(arg_symbol);
+                                        } else {
+                                            // sould be only symbols
+                                            return Err(Error::SyntaxError);
+                                        }
                                     }
-                                }
-                            } else {
-                                // should be a list of args
-                                return Err(Error::SyntaxError);
-                            }
+                                },
+                                Exp::Symbol(vararg_name) => {
+                                    arguments.push(".".to_string());
+                                    arguments.push(vararg_name);
+                                },
+                                _ => return Err(Error::SyntaxError)
+
+                            };
                             let lambda = Lambda {
                                 body: Box::new(rest[1].clone()),
                                 arguments,
@@ -382,6 +406,14 @@ mod test_interpreter {
         let code = "((lambda (x) x) 10)";
         let res = interpreter.run(code).unwrap();
         assert_eq!(res, Exp::Int(10));
+        
+        let code = "((lambda x x) 10)";
+        let res = interpreter.run(code).unwrap();
+        assert_eq!(res, Exp::List(vec![Exp::Int(10)]));
+
+        let code = "((lambda (a . x) x) 5 (quote a) 11)";
+        let res = interpreter.run(code).unwrap();
+        assert_eq!(res, Exp::List(vec![Exp::Symbol("a".to_string()), Exp::Int(11)]));
     }
 
     #[test]
