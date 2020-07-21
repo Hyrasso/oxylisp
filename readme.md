@@ -16,14 +16,13 @@ lisp in lisp, metacircular thingy : https://mitpress.mit.edu/sites/default/files
 
 # TODOs
 
-- [ ] : everything in there: http://norvig.com/lispy2.html
+- [ ] : Tail recurseion and everything in there: http://norvig.com/lispy2.html
 - [x] a repl
     - better error handling to not be kicked out all the time
 - [ ] executing from files, maybe some load macro
 - [ ] refactor: how does interpreter, env and eval relates to each other code wise  
     improve exp generation from string, clumsy (exp_from_token seems a bit weird and not in the right place)
 - [ ] : explore the use of Rc::clone each time eval needs to be passed as ref is called, might not be necessary
-- [ ] : implementation of std 'helpers' functions from the keywords and std functions implemented in Rust
 
 ## interpreter.rs
 - [x] define what is environment (hashmap string -> Exp)
@@ -36,6 +35,7 @@ lisp in lisp, metacircular thingy : https://mitpress.mit.edu/sites/default/files
 - implement some std funct (maths, comp is a good start), see for things with side effects (print, i/o)  
     std funct needs either a new exp type or maybe they could be implemented alongside keywords like if, define, ... 
     - maths (+-/*)
+    - type comp number? procedure? symbol?
     - comp (><=)
     - bool (not and or)
     - array/vector/linkedlist manipulation (can use default exp::list, but can be mixed type)  
@@ -48,3 +48,12 @@ lisp in lisp, metacircular thingy : https://mitpress.mit.edu/sites/default/files
     http://git.savannah.gnu.org/cgit/guile.git/tree/test-suite/tests
 - learn some lisp
 - separate test files/ or split interpreter and env, interpreter is getting very confusing
+
+## bugs
+- strange recursion causing stack overflow: probably because building a list like
+    ((... (1 2) adding 0) for 0) each 0) call 0)
+    ```
+    (define foo (lambda x (foo x 0)))
+    (foo 1 2)
+    ```
+    Having the list on the heap would be a solution, this code is also data thing is weird 

@@ -3,8 +3,10 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt::{self, Formatter, Display, Debug};
-// at some point will probably need to replace some vec with linked list
+
+// at some point will probably need to replace some vec with linked list, or custom pair
 // use std::collections::LinkedList;
+// enum pair {some((Rc?Exp, pair))}
 
 #[derive(Clone)]
 pub struct Lambda {
@@ -32,6 +34,7 @@ impl Debug for Lambda {
 pub enum Exp {
     Int(i64),
     Float(f64),
+    Bool(bool),
     Symbol(String),
     List(Vec<Exp>),
     Lambda(Lambda)
@@ -187,17 +190,19 @@ mod test_env {
     }
 }
 
-
+// TODO: boolean type, needs to type (quote #f) for now
 fn is_true(exp: Exp) -> bool {
     match exp {
-        Exp::Symbol("#f") => false,
+        Exp::Symbol(symbol) => !(&symbol == "#f"),
         _ => true
     }
 }
 
-// change to result to handle runtime errors
 fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
-    match expression {
+    let mut expression = expression;
+    let mut environment = environment;
+    loop {
+    return match expression {
         Exp::List(expressions) => {
             // TODO: add some syntax check 
             // ex check that the number of exp in the list is coherent for each keyword
@@ -225,7 +230,12 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                         }
                     }
                     // new env is dropped if no reference to it is made
-                    eval(*lambda.body.clone(), new_env)
+                    // implement tail recursion here instead
+                    // something like
+                    expression = *lambda.body.clone();
+                    environment = new_env;
+                    continue;
+                    // eval(*lambda.body.clone(), new_env)
                 },
                 Exp::Symbol(symbol) => {
                     match symbol.as_str() {
@@ -299,24 +309,29 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                         symbol => {
                             let mut exp_list = vec![environment.get(symbol)?];
                             exp_list.extend_from_slice(rest);
-                            eval(Exp::List(exp_list), environment)
+                            expression = Exp::List(exp_list);
+                            continue;
+                            // eval(Exp::List(exp_list), environment)
                         }
                         // _ => Err(Error::SyntaxError)
                     }
                 },
-                // sould be an error, returns only first number of list
                 // Unexcpected token
-                Exp::Float(_) | Exp::Int(_) => Err(Error::SyntaxError),
+                Exp::Float(_) | Exp::Int(_) | Exp::Bool(_) => Err(Error::SyntaxError),
                 Exp::List(expr) => {
+                    // eval expression at the start of the list then eval the whole expression
                     let mut expr_list = vec![eval(Exp::List(expr.to_vec()), Rc::clone(&environment))?];
                     expr_list.extend_from_slice(rest);
-                    eval(Exp::List(expr_list), environment)
+                    expression = Exp::List(expr_list);
+                    continue;
+                    // eval(Exp::List(expr_list), environment)
                 }
             }
         },
         Exp::Symbol(symbol) => environment.get(&symbol),
         number => Ok(number)
     }
+    } // end of loop
 }
 
 #[derive(Debug)]
@@ -394,7 +409,7 @@ mod test_interpreter {
         let res = interpreter.run(code).unwrap();
         assert_eq!(res, Exp::Int(1));
 
-        let code = "(if 0 1 0)";
+        let code = "(if (quote #f) 1 0)";
         let res = interpreter.run(code).unwrap();
         assert_eq!(res, Exp::Int(0));
 
