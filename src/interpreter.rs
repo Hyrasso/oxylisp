@@ -67,6 +67,7 @@ pub fn exp_from_tokens(mut tokens: &mut Vec<Token>) -> Result<Exp, ()> {
 
 
 mod test {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -148,6 +149,7 @@ impl Env {
     }
 }
 mod test_env {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -237,6 +239,7 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                     continue;
                     // eval(*lambda.body.clone(), new_env)
                 },
+                // Exp::Symbol(symbol @ "if") => {
                 Exp::Symbol(symbol) => {
                     match symbol.as_str() {
                         "if" => {
@@ -267,11 +270,23 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                         "quote" => {
                             Ok(rest[0].clone())
                         },
+                        "begin" => {
+                            if let Some((last, others)) = rest.split_last() {
+                                for exp in others {
+                                    eval(exp.clone(), Rc::clone(&environment))?;
+                                }
+                                expression = last.clone();
+                                continue;
+                            } else {
+                                Err(Error::SyntaxError)
+                            }
+                        },
                         "lambda" => {
                             let mut arguments = vec![];
                             // (lambda (. a) a) is a valid syntax for now
                             // equivalent to (lambda a a)
-                            match rest[0].clone() {
+                            let (args, body) = rest.split_first().unwrap();
+                            match args.clone() {
                                 Exp::List(args) => {
                                     for arg in args {
                                         if let Exp::Symbol(arg_symbol) = arg {
@@ -289,8 +304,10 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                                 _ => return Err(Error::SyntaxError)
 
                             };
+                            let mut body_expand = vec![Exp::Symbol("begin".to_string())];
+                            body_expand.extend_from_slice(body);
                             let lambda = Lambda {
-                                body: Box::new(rest[1].clone()),
+                                body: Box::new(Exp::List(body_expand)),
                                 arguments,
                                 environment: Rc::clone(&environment)
                             };
@@ -378,6 +395,7 @@ impl Interpreter {
 }
 
 mod test_interpreter {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -437,5 +455,13 @@ mod test_interpreter {
         let code = "(quote (define a 1))";
         let res = interpreter.run(code).unwrap();
         assert_eq!(res, Exp::List(vec![Exp::Symbol("define".to_string()), Exp::Symbol("a".to_string()), Exp::Int(1)]));
+    }
+
+    #[test]
+    fn test_begin() {
+        let mut interpreter = Interpreter::new();
+        let code = "(begin 0 (define a 1) (quote (1 2)) 1)";
+        let res = interpreter.run(code).unwrap();
+        assert_eq!(res, Exp::Int(1));
     }
 }

@@ -4,7 +4,8 @@ Implementation from http://norvig.com/lispy.html
 
 Example of impl in rust: https://stopa.io/post/222
 
-Scheme : https://en.wikipedia.org/wiki/Scheme_(programming_language)
+Scheme : https://en.wikipedia.org/wiki/Scheme_(programming_language)  
+https://small.r7rs.org/attachment/r7rs.pdf
 
 Scheme book: https://www.scheme.com/tspl4/
 
@@ -38,7 +39,7 @@ lisp in lisp, metacircular thingy : https://mitpress.mit.edu/sites/default/files
     - type comp number? procedure? symbol?
     - comp (><=)
     - bool (not and or)
-    - array/vector/linkedlist manipulation (can use default exp::list, but can be mixed type)  
+    - array/vector/linkedlist manipulation (can use default exp::list, can be mixed type but is not linked list)  
         lambda calculus way to implement pair : https://en.wikipedia.org/wiki/Cons (from then we can build linked list and binary trees and probably more)
     - stdin/stdout (print, fopen, write, read) (needs some string/char and array type)
 
