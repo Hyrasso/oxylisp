@@ -42,16 +42,16 @@ pub enum Exp {
 }
 
 
-pub fn exp_from_tokens(mut tokens: &mut Vec<Token>) -> Result<Exp, ()> {
+pub fn exp_from_tokens(mut tokens: &mut Vec<Token>) -> Result<Exp, Error> {
     if tokens.is_empty() {
-        return Err(());
+        return Err(Error::SyntaxError);
     }
 
     let token = tokens.remove(0);
     match token {
         Token::LParen => {
             let mut args = vec![];
-            while tokens[0] != Token::RParen {
+            while tokens.get(0).ok_or(Error::SyntaxError)? != &Token::RParen {
                 args.push(exp_from_tokens(&mut tokens)?);
             }
             // remove ')'
@@ -61,7 +61,7 @@ pub fn exp_from_tokens(mut tokens: &mut Vec<Token>) -> Result<Exp, ()> {
         Token::Integer(value) => Ok(Exp::Int(value)),
         Token::Float(value) => Ok(Exp::Float(value)),
         Token::Symbol(value) => Ok(Exp::Symbol(value)),
-        Token::RParen => Err(())
+        Token::RParen => Err(Error::SyntaxError)
     }
 }
 
@@ -97,8 +97,6 @@ pub struct Env {
     parent: Option<Rc<Env>>,
     local: RefCell<EnvMap>
 }
-
-type EnvRcRefCell = Rc<RefCell<Env>>;
 
 impl Env {
     fn new() -> Self {
@@ -389,14 +387,31 @@ impl Interpreter {
 
     pub fn run(&mut self, code: &str) -> Result<Exp, Error> {
         let mut tokens = tokenize(code);
-        let expression = exp_from_tokens(&mut tokens).unwrap();
+        let expression = exp_from_tokens(&mut tokens)?;
         self.eval(expression)
+    }
+
+    pub fn run_file(&mut self, code: &str) -> Result<Exp, Error> {
+        let mut tokens = tokenize(code);
+        let mut res = self.eval(exp_from_tokens(&mut tokens)?)?;
+        while tokens.len() > 0 {
+            res = self.eval(exp_from_tokens(&mut tokens)?)?;
+        }
+        Ok(res)
     }
 }
 
 mod test_interpreter {
     #[allow(unused_imports)]
     use super::*;
+
+    #[test]
+    fn test_run() {
+        let mut interpreter = Interpreter::new();
+        assert_eq!(interpreter.run("1").unwrap(), Exp::Int(1));
+        assert_eq!(interpreter.run("(define a 1)").unwrap(), Exp::Int(1));
+        assert_eq!(interpreter.run_file("(define a 1)\n(set! a 2)\n(set! a 3)").unwrap(), Exp::Int(2));
+    }
 
     #[test]
     fn test_define() {
@@ -412,7 +427,7 @@ mod test_interpreter {
     #[test]
     fn test_set() {
         let mut interpreter = Interpreter::new();
-        let res = interpreter.run("(define a 2)").unwrap();
+        let _res = interpreter.run("(define a 2)").unwrap();
         let res = interpreter.run("(set! a 1)").unwrap();
         assert_eq!(res, Exp::Int(2));
         

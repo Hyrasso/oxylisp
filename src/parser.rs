@@ -1,6 +1,22 @@
 use From;
 
+// TODO: multiline comment #| or expr comment #;
+fn remove_comments(text: &str) -> String {
+    let mut text = text.to_string();
+    while let Some(start_index) = text.find(";") {
+        if let Some(offset) = text[start_index..].find("\n") {
+            for _ in 0..offset {
+                text.remove(start_index);
+            }
+        } else {
+            text = text[start_index..].to_string();
+        }
+    }
+    text
+}
+
 pub fn tokenize(text: &str) -> Vec<Token> {
+    let text = remove_comments(text);
     text.replace("(", " ( ")
         .replace(")", " ) ")
         .split_whitespace()
@@ -38,9 +54,16 @@ mod test {
     #[allow(unused_imports)]
     use super::*;
 
+    fn test_remove_comments() {
+        assert_eq!(
+            remove_comments("bla;un commentaire\n rien ici\n;une ligne commentée\nthe ;end"),
+            "bla\n rien ici\n\nthe ".to_string()
+        );
+    }
+
     #[test]
     fn tokenizer() {
-        let data = "(print 1 (+ 1.1 3e5))";
+        let data = "(print 1 (+ 1.1 3e5))\n (blop) ";
         let tokens = tokenize(data);
         assert_eq!(tokens, vec![
             Token::LParen,
@@ -51,6 +74,9 @@ mod test {
             Token::Float(1.1),
             Token::Float(3e5),
             Token::RParen,
+            Token::RParen,
+            Token::LParen,
+            Token::Symbol("blop".to_owned()),
             Token::RParen
         ]);
     }
