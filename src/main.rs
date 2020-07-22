@@ -3,16 +3,22 @@ use interpreter::*;
 mod parser;
 use parser::*;
 
+use std::env;
 use std::io::{BufRead, self, Write};
+use std::fs;
 
-fn main() {
-    if true {
+fn main() -> io::Result<()> {
+    let args: Vec<_> = env::args().collect();
+
+    if args.len() == 1 {
         repl();
     } else {
-        let mut env = interpreter::Interpreter::new();
-        println!("{:?}", env.run("(define blop (if 1 (1) (0)))"));
-        print!("{:?}", env);
+        let file = &args[1];
+        let prog = fs::read_to_string(file)?;
+        let mut interpreter = interpreter::Interpreter::new();
+        println!("{:?}", interpreter.run_file(&prog));
     }
+    Ok(())
 }
 
 fn print_repl_input() {
