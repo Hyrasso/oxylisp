@@ -101,6 +101,17 @@ mod test {
             Token::RParen
         ]);
 
+        let data = "'`,@(blop)";
+        let tokens = tokenize(data);
+        assert_eq!(tokens, vec![
+            Token::Quote,
+            Token::Quasiquote,
+            Token::UnquoteSplicing,
+            Token::LParen,
+            Token::Symbol("blop".to_owned()),
+            Token::RParen
+        ]);
+
         let data = "`(a ,b ,@(a b))";;
         let tokens = tokenize(data);
         assert_eq!(tokens, vec![

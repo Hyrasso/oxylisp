@@ -90,10 +90,12 @@ pub fn exp_from_tokens(mut tokens: &mut Vec<Token>) -> Result<Exp, Error> {
             for token in tokens[index..].iter() {
                 index += 1;
                 match token {
-                    Token::RParen => depth -= 1,
                     Token::LParen => depth += 1,
-                    _ => if depth < 1 {break;}
+                    Token::RParen => depth -= 1,
+                    Token::Quote | Token::Unquote | Token::UnquoteSplicing | Token::Quasiquote => continue,
+                    Token::Symbol(_) | Token::Float(_) | Token::Integer(_) => if depth < 1 {break;}
                 }
+                if depth < 1 {break;}
             }
             tokens.insert(index, Token::RParen);
             exp_from_tokens(&mut tokens)
@@ -124,13 +126,29 @@ mod test {
             ])
         ]));
 
-        let mut prog: Vec<Token> = tokenize("'(1 '2)");
+        let mut prog: Vec<Token> = tokenize("'(test-begin '(R7RS))");
         assert_eq!(exp_from_tokens(&mut prog).unwrap(), Exp::List(vec![
             Exp::Symbol("quote".to_string()),
-            Exp::List(vec![Exp::Int(1), Exp::List(
-                vec![Exp::Symbol("quote".to_string()), Exp::Int(2)])
+            Exp::List(vec![Exp::Symbol("test-begin".to_string()), Exp::List(
+                vec![Exp::Symbol("quote".to_string()), Exp::List(vec![Exp::Symbol("R7RS".to_string())])])
             ])
         ]));
+
+        let mut prog: Vec<Token> = tokenize("`,1");
+        assert_eq!(exp_from_tokens(&mut prog).unwrap(), Exp::List(vec![
+            Exp::Symbol("quasiquote".to_string()),
+            Exp::List(vec![Exp::Symbol("unquote".to_string()), Exp::Int(1)])
+        ]));
+
+        let mut prog: Vec<Token> = tokenize("`(1 ,@(2))");
+        assert_eq!(exp_from_tokens(&mut prog).unwrap(), Exp::List(vec![
+            Exp::Symbol("quasiquote".to_string()),
+            Exp::List(vec![
+                Exp::Int(1),
+                Exp::List(vec![Exp::Symbol("unquote-splicing".to_string()), Exp::List(vec![Exp::Int(2)])])
+                ])
+            ])
+        );
     }
 }
 
@@ -433,8 +451,7 @@ impl Interpreter {
     }
 
     pub fn eval(&mut self, expression: Exp) -> Result<Exp, Error> {
-        // "get_mut panic if more than 2 references to it"
-        // see rust implementation in readme (it uses rc for env) or switch to refcell
+        // println!("{:?}", expression);
         eval(expression, Rc::clone(&self.environment))
     }
 
