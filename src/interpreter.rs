@@ -1,5 +1,6 @@
-use crate::parser::*;
-use crate::forms::*;
+use super::parser::*;
+use super::forms::*;
+use super::procedures::*;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -48,12 +49,10 @@ pub enum Exp {
     Symbol(String),
     List(Vec<Exp>),
     Lambda(Lambda),
+    Procedure(fn(Vec<Exp>, Rc<Env>) -> Result<Exp, Error>),
     SyntaxForm(fn(Vec<Exp>, Rc<Env>) -> Result<Exp, Error>)
-    // Syntax(UserDefined | Compiled)
-    // CompiledSyntax
-    // CompiledProcedure(fn Exp -> Exp)
+    // Syntax(UserDefined)
 }
-
 
 pub fn exp_from_tokens(mut tokens: &mut Vec<Token>) -> Result<Exp, Error> {
     if tokens.is_empty() {
@@ -88,28 +87,15 @@ pub fn exp_from_tokens(mut tokens: &mut Vec<Token>) -> Result<Exp, Error> {
         quoting @ Token::Unquote | 
         quoting @ Token::UnquoteSplicing | 
         quoting @ Token::Quasiquote  => {
-            tokens.insert(0, Token::LParen);
-            match quoting {
-                Token::Quote => tokens.insert(1, Token::Symbol("quote".to_string())),
-                Token::Quasiquote => tokens.insert(1, Token::Symbol("quasiquote".to_string())),
-                Token::Unquote => tokens.insert(1, Token::Symbol("unquote".to_string())),
-                Token::UnquoteSplicing => tokens.insert(1, Token::Symbol("unquote-splicing".to_string())),
+            let quoted = exp_from_tokens(&mut tokens)?;
+            let quote_symbol = match quoting {
+                Token::Quote => Exp::Symbol("quote".to_string()),
+                Token::Quasiquote => Exp::Symbol("quasiquote".to_string()),
+                Token::Unquote => Exp::Symbol("unquote".to_string()),
+                Token::UnquoteSplicing => Exp::Symbol("unquote-splicing".to_string()),
                 _ => unreachable!()
-            }
-            let mut depth = 0;
-            let mut index = 2;
-            for token in tokens[index..].iter() {
-                index += 1;
-                match token {
-                    Token::LParen => depth += 1,
-                    Token::RParen => depth -= 1,
-                    Token::Quote | Token::Unquote | Token::UnquoteSplicing | Token::Quasiquote => continue,
-                    Token::Symbol(_) | Token::Float(_) | Token::Integer(_) => if depth < 1 {break;}
-                }
-                if depth < 1 {break;}
-            }
-            tokens.insert(index, Token::RParen);
-            exp_from_tokens(&mut tokens)
+            };
+            Ok(Exp::List(vec![quote_symbol, quoted]))
         }
     }
 }
@@ -282,6 +268,14 @@ pub fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                 Exp::SyntaxForm(transform) => {
                     transform(rest, Rc::clone(&environment))
                 },
+                Exp::Procedure(proc) => {
+                    let mut args = vec![];
+                    for value in rest.iter() {
+                        args.push(eval(value.clone(), Rc::clone(&environment))?);
+                    }
+                    expression = proc(args, Rc::clone(&environment))?;
+                    continue;
+                },
                 Exp::Lambda(lambda) => {
                     let new_env = Rc::new(Env::new_with_parent(&lambda.environment));
                     // add argument -> eval exp1, exp2.. to local env 
@@ -391,6 +385,11 @@ impl Interpreter {
         env.insert("lambda".to_string(), Exp::SyntaxForm(lambda));
         env.insert("set!".to_string(), Exp::SyntaxForm(set));
         env.insert("quote".to_string(), Exp::SyntaxForm(quote));
+
+        env.insert("equal?".to_string(), Exp::Procedure(equal));
+        env.insert("+".to_string(), Exp::Procedure(add));
+        env.insert("write".to_string(), Exp::Procedure(write));
+
         Interpreter {
             environment: Rc::new(env)
         }

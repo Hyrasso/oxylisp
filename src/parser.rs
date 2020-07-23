@@ -14,6 +14,8 @@ fn remove_comments(text: &str) -> String {
     text
 }
 
+// TODO: iterator from buffer with () counting to break between exp?
+// reading from buffer can also simplify comments handeling 
 pub fn tokenize(text: &str) -> Vec<Token> {
     let text = remove_comments(text);
     text.replace("(", " ( ")

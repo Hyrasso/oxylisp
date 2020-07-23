@@ -4,6 +4,7 @@ mod parser;
 use parser::*;
 mod forms;
 use forms::*;
+mod procedures;
 
 use std::env;
 use std::io::{BufRead, self, Write};

@@ -75,9 +75,16 @@
 
 ; TODO: implement eq? then test
 ; for now test does nothing
-(define test (lambda x 'test))
+(define test
+  (lambda (expect result)
+    (if (equal? expect result)
+      #t
+      (begin 
+        (write expect)
+        #f))))
 
-(test 'a (quote a))
+(test 'b (quote a))
+
 ; todo implement vectors vs list
 ; (test #(a b c) (quote #(a b c)))
 (test '(+ 1 2) (quote (+ 1 2)))
@@ -98,9 +105,9 @@
 (test #t '#t)
 (test #t #t)
 
+(test 7 (+ 3 4))
 ; todo implement some base procedures
-; (test 7 (+ 3 4))
-; (test 12 ((if #f + *) 3 4))
+(test 12 ((if #f + *) 3 4))
 
 (test 8 ((lambda (x) (+ x x)) 4))
 (define reverse-subtract
