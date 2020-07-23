@@ -1,9 +1,9 @@
-use super::parser::*;
+use crate::parser::*;
+use crate::forms::*;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt::{self, Formatter, Display, Debug};
-
 // at some point will probably need to replace some vec with linked list, or custom pair
 // use std::collections::LinkedList;
 // enum pair {some((Rc?Exp, pair))}
@@ -13,6 +13,16 @@ pub struct Lambda {
     body: Box<Exp>,
     arguments: Vec<String>,
     environment: Rc<Env>
+}
+
+impl Lambda {
+    pub fn new(body: Box<Exp>, arguments: Vec<String>, environment: Rc<Env>) -> Self {
+        Lambda {
+            body,
+            arguments,
+            environment
+        }
+    }
 }
 
 impl PartialEq for Lambda {
@@ -37,7 +47,8 @@ pub enum Exp {
     Bool(bool),
     Symbol(String),
     List(Vec<Exp>),
-    Lambda(Lambda)
+    Lambda(Lambda),
+    SyntaxForm(fn(Vec<Exp>, Rc<Env>) -> Result<Exp, Error>)
     // Syntax(UserDefined | Compiled)
     // CompiledSyntax
     // CompiledProcedure(fn Exp -> Exp)
@@ -161,26 +172,26 @@ pub struct Env {
 }
 
 impl Env {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Env {
             parent: None,
             local: RefCell::new(EnvMap::new())
         }
     }
 
-    fn new_with_parent(parent: &Rc<Env>) -> Self {
+    pub fn new_with_parent(parent: &Rc<Env>) -> Self {
         Env {
             parent: Some(Rc::clone(parent)),
             local: RefCell::new(EnvMap::new())
         }
     }
 
-    fn insert(&self, key: String, value: Exp) -> Option<Exp> {
+    pub fn insert(&self, key: String, value: Exp) -> Option<Exp> {
         self.local.borrow_mut().insert(key, value)
     }
 
     /// Returns cloned value of the env object
-    fn get(&self, key: &str) -> Result<Exp, Error> {
+    pub fn get(&self, key: &str) -> Result<Exp, Error> {
         let local = self.local.borrow();
         if let Some(value) = local.get(key) {
             Ok(value.clone())
@@ -194,7 +205,7 @@ impl Env {
     }
 
     // TODO: probably some refactorisation could be done
-    fn set(&self, key: &str, value: Exp) -> Result<Exp, Error> {
+    pub fn set(&self, key: &str, value: Exp) -> Result<Exp, Error> {
         // let local = self.local.borrow();
         let mut local = self.local.borrow_mut();
         if local.get(key).is_some() {
@@ -252,41 +263,39 @@ mod test_env {
     }
 }
 
-// TODO: boolean type, needs to type (quote #f) for now
-fn is_true(exp: Exp) -> bool {
-    match exp {
-        Exp::Bool(value) => value,
-        _ => true
-    }
-}
 
-fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
+pub fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
     let mut expression = expression;
     let mut environment = environment;
     loop {
     return match expression {
-        Exp::List(expressions) => {
+        Exp::List(mut expressions) => {
             // TODO: add some syntax check 
             // ex check that the number of exp in the list is coherent for each keyword
             // lookup rust slice pattern, something like [a, b, c] = rest
-            let (first, rest) = expressions.split_first().unwrap();
+            let (first, rest) = expressions.split_first_mut().unwrap();
+            let mut rest = rest.to_vec();
             match first {
                 // Exp::Syntax(Syntax) = {
                 //     unimplemented!();
                 // },
+                Exp::SyntaxForm(transform) => {
+                    transform(rest, Rc::clone(&environment))
+                },
                 Exp::Lambda(lambda) => {
                     let new_env = Rc::new(Env::new_with_parent(&lambda.environment));
                     // add argument -> eval exp1, exp2.. to local env 
                     let mut args_iter = lambda.arguments.split(|symbol| symbol == ".");
                     let args = args_iter.next().unwrap();
-                    for (key, value) in args.iter().zip(rest.into_iter()) {
+                    let (arg_values, vararg_values) = rest.split_at(args.len());
+                    for (key, value) in args.iter().zip(arg_values.into_iter()) {
                         new_env.insert(key.to_string(), eval(value.clone(), Rc::clone(&environment))?);
                     }
                     if let Some(varargs) = args_iter.next() {
                         let vararg_name = varargs.first().ok_or(Error::SyntaxError)?;
                         // evaluate all the exp before passing them
                         let mut values = vec![];
-                        for arg in rest[args.len()..].iter() {
+                        for arg in vararg_values.iter() {
                             values.push(eval(arg.clone(), Rc::clone(&environment))?);
                         }
                         new_env.insert(vararg_name.clone(), Exp::List(values));
@@ -308,36 +317,7 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                 Exp::Symbol(symbol) => {
                     // all these should be defined as compiled syntax (and set at interpreter instanciation?)
                     match symbol.as_str() {
-                        "if" => {
-                            let exp = if is_true(eval(rest[0].clone(), Rc::clone(&environment))?) {
-                                &rest[1]
-                            } else {
-                                &rest[2]
-                            };
-                            eval(exp.clone(), environment)
-                        },
-                        "define" => {
-                            match &rest[0] {
-                                Exp::Symbol(name) => {
-                                    let value = &rest[1];
-                                    let value = eval(value.clone(), Rc::clone(&environment))?;
-                                    environment.insert(name.clone(), value.clone());
-                                    environment.get(name)
-                                },
-                                _ => Err(Error::SyntaxError)
-                            }
-                        },
-                        "set!" => {
-                            if let Exp::Symbol(name) = &rest[0] {
-                                environment.set(name, eval(rest[1].clone(), Rc::clone(&environment))?)
-                            } else {
-                                Err(Error::SyntaxError)
-                            }
-                        },
-                        "quote" => {
-                            Ok(rest[0].clone())
-                        },
-                        // todo: begin can be implemented in term of
+                        // todo: begin can be implemented in term of lambda expansion
                         "begin" => {
                             if let Some((last, others)) = rest.split_last() {
                                 for exp in others {
@@ -349,51 +329,10 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                                 Err(Error::SyntaxError)
                             }
                         },
-                        "lambda" => {
-                            let mut arguments = vec![];
-                            // (lambda (. a) a) is a valid syntax for now
-                            // equivalent to (lambda a a)
-                            let (args, body) = rest.split_first().unwrap();
-                            match args.clone() {
-                                Exp::List(args) => {
-                                    for arg in args {
-                                        if let Exp::Symbol(arg_symbol) = arg {
-                                            arguments.push(arg_symbol);
-                                        } else {
-                                            // sould be only symbols
-                                            return Err(Error::SyntaxError);
-                                        }
-                                    }
-                                },
-                                Exp::Symbol(vararg_name) => {
-                                    arguments.push(".".to_string());
-                                    arguments.push(vararg_name);
-                                },
-                                _ => return Err(Error::SyntaxError)
-
-                            };
-                            let mut body_expand = vec![Exp::Symbol("begin".to_string())];
-                            body_expand.extend_from_slice(body);
-                            let lambda = Lambda {
-                                body: Box::new(Exp::List(body_expand)),
-                                arguments,
-                                environment: Rc::clone(&environment)
-                            };
-                            Ok(Exp::Lambda(lambda))
-                        }
-                        // Exp::Symbol(symbol) if &symbol == "lambda" => {
-                        //     let arguments = expression[1];
-                        //     let body = expression[2];
-                        //     Exp::Lambda(arguments, body)
-                            // lambda env is parent env, create local env for body execution, with outer: lambda env
-                            // local scope can be saved, probably needs some reference counting
-                            // let new_env = arguments.zip(expression[1..]).collect();
-                            // new_env.extend(environment);
-                            // eval(body, new_env)
-                        // },
                         symbol => {
                             let mut exp_list = vec![environment.get(symbol)?];
-                            exp_list.extend_from_slice(rest);
+                            // exp_list.extend_from_slice(rest);
+                            exp_list.append(&mut rest);
                             expression = Exp::List(exp_list);
                             continue;
                             // eval(Exp::List(exp_list), environment)
@@ -406,7 +345,8 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                 Exp::List(expr) => {
                     // eval expression at the start of the list then eval the whole expression
                     let mut expr_list = vec![eval(Exp::List(expr.to_vec()), Rc::clone(&environment))?];
-                    expr_list.extend_from_slice(rest);
+                    expr_list.append(&mut rest);
+                    // extend_from_slice(rest);
                     expression = Exp::List(expr_list);
                     continue;
                     // eval(Exp::List(expr_list), environment)
@@ -414,9 +354,9 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
             }
         },
         Exp::Symbol(symbol) => environment.get(&symbol),
-        number => Ok(number)
+        constant => Ok(constant)
         // Exp::Syntax => Err::Syntax, syntactic keyword may not be used as an expression
-    }
+    };
     } // end of loop
 }
 
@@ -445,8 +385,14 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
+        let env = Env::new();
+        env.insert("if".to_string(), Exp::SyntaxForm(if_form));
+        env.insert("define".to_string(), Exp::SyntaxForm(define));
+        env.insert("lambda".to_string(), Exp::SyntaxForm(lambda));
+        env.insert("set!".to_string(), Exp::SyntaxForm(set));
+        env.insert("quote".to_string(), Exp::SyntaxForm(quote));
         Interpreter {
-            environment: Rc::new(Env::new())
+            environment: Rc::new(env)
         }
     }
 

@@ -2,6 +2,8 @@ mod interpreter;
 use interpreter::*;
 mod parser;
 use parser::*;
+mod forms;
+use forms::*;
 
 use std::env;
 use std::io::{BufRead, self, Write};
