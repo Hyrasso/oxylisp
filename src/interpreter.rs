@@ -38,7 +38,9 @@ pub enum Exp {
     Symbol(String),
     List(Vec<Exp>),
     Lambda(Lambda)
-    // Builtin(BuiltinProc)
+    // Syntax(UserDefined | Compiled)
+    // CompiledSyntax
+    // CompiledProcedure(fn Exp -> Exp)
 }
 
 
@@ -60,8 +62,42 @@ pub fn exp_from_tokens(mut tokens: &mut Vec<Token>) -> Result<Exp, Error> {
         },
         Token::Integer(value) => Ok(Exp::Int(value)),
         Token::Float(value) => Ok(Exp::Float(value)),
-        Token::Symbol(value) => Ok(Exp::Symbol(value)),
-        Token::RParen => Err(Error::SyntaxError)
+        Token::Symbol(value) => {
+            if &value == "#f" {
+                Ok(Exp::Bool(false))
+            } else if &value == "#t" {
+                Ok(Exp::Bool(true))
+            } else {
+                Ok(Exp::Symbol(value))
+            }
+        },
+        Token::RParen => Err(Error::SyntaxError),
+        // Lots of refactor todo around here
+        quoting @ Token::Quote | 
+        quoting @ Token::Unquote | 
+        quoting @ Token::UnquoteSplicing | 
+        quoting @ Token::Quasiquote  => {
+            tokens.insert(0, Token::LParen);
+            match quoting {
+                Token::Quote => tokens.insert(1, Token::Symbol("quote".to_string())),
+                Token::Quasiquote => tokens.insert(1, Token::Symbol("quasiquote".to_string())),
+                Token::Unquote => tokens.insert(1, Token::Symbol("unquote".to_string())),
+                Token::UnquoteSplicing => tokens.insert(1, Token::Symbol("unquote-splicing".to_string())),
+                _ => unreachable!()
+            }
+            let mut depth = 0;
+            let mut index = 2;
+            for token in tokens[index..].iter() {
+                index += 1;
+                match token {
+                    Token::RParen => depth -= 1,
+                    Token::LParen => depth += 1,
+                    _ => if depth < 1 {break;}
+                }
+            }
+            tokens.insert(index, Token::RParen);
+            exp_from_tokens(&mut tokens)
+        }
     }
 }
 
@@ -71,24 +107,32 @@ mod test {
     use super::*;
 
     #[test]
-    fn exp() {
+    fn test_exp() {
         let mut prog = vec![];
         assert!(exp_from_tokens(&mut prog).is_err());
 
         
         let mut prog: Vec<Token> = tokenize("(print 1 (+ 1 2)) ()");
         assert!(exp_from_tokens(&mut prog).is_ok());
+
+        
+        let mut prog: Vec<Token> = tokenize("'(1 '2)");
+        assert_eq!(exp_from_tokens(&mut prog).unwrap(), Exp::List(vec![
+            Exp::Symbol("quote".to_string()),
+            Exp::List(vec![Exp::Int(1), Exp::List(
+                vec![Exp::Symbol("quote".to_string()), Exp::Int(2)])
+            ])
+        ]));
+
+        let mut prog: Vec<Token> = tokenize("'(1 '2)");
+        assert_eq!(exp_from_tokens(&mut prog).unwrap(), Exp::List(vec![
+            Exp::Symbol("quote".to_string()),
+            Exp::List(vec![Exp::Int(1), Exp::List(
+                vec![Exp::Symbol("quote".to_string()), Exp::Int(2)])
+            ])
+        ]));
     }
 }
-
-// fn insert_from_env(mut env: Env, update: Env) {
-//     for key in update {
-//         if key not in env {
-//             env.insert(key, update[key])
-//         }
-//     }
-// }
-
 
 pub type EnvMap = HashMap<String, Exp>;
 
@@ -193,7 +237,7 @@ mod test_env {
 // TODO: boolean type, needs to type (quote #f) for now
 fn is_true(exp: Exp) -> bool {
     match exp {
-        Exp::Symbol(symbol) => !(&symbol == "#f"),
+        Exp::Bool(value) => value,
         _ => true
     }
 }
@@ -209,6 +253,9 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
             // lookup rust slice pattern, something like [a, b, c] = rest
             let (first, rest) = expressions.split_first().unwrap();
             match first {
+                // Exp::Syntax(Syntax) = {
+                //     unimplemented!();
+                // },
                 Exp::Lambda(lambda) => {
                     let new_env = Rc::new(Env::new_with_parent(&lambda.environment));
                     // add argument -> eval exp1, exp2.. to local env 
@@ -237,8 +284,11 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                     continue;
                     // eval(*lambda.body.clone(), new_env)
                 },
-                // Exp::Symbol(symbol @ "if") => {
+                // Exp::Symbol(symbol @ if_) => {
+                //     Err(Error::NotImplemented)
+                // },
                 Exp::Symbol(symbol) => {
+                    // all these should be defined as compiled syntax (and set at interpreter instanciation?)
                     match symbol.as_str() {
                         "if" => {
                             let exp = if is_true(eval(rest[0].clone(), Rc::clone(&environment))?) {
@@ -249,13 +299,14 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                             eval(exp.clone(), environment)
                         },
                         "define" => {
-                            if let Exp::Symbol(name) = &rest[0] {
-                                let value = &rest[1];
-                                let value = eval(value.clone(), Rc::clone(&environment))?;
-                                environment.insert(name.clone(), value.clone());
-                                environment.get(name)
-                            } else {
-                                Err(Error::SyntaxError)
+                            match &rest[0] {
+                                Exp::Symbol(name) => {
+                                    let value = &rest[1];
+                                    let value = eval(value.clone(), Rc::clone(&environment))?;
+                                    environment.insert(name.clone(), value.clone());
+                                    environment.get(name)
+                                },
+                                _ => Err(Error::SyntaxError)
                             }
                         },
                         "set!" => {
@@ -268,6 +319,7 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                         "quote" => {
                             Ok(rest[0].clone())
                         },
+                        // todo: begin can be implemented in term of
                         "begin" => {
                             if let Some((last, others)) = rest.split_last() {
                                 for exp in others {
@@ -345,6 +397,7 @@ fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
         },
         Exp::Symbol(symbol) => environment.get(&symbol),
         number => Ok(number)
+        // Exp::Syntax => Err::Syntax, syntactic keyword may not be used as an expression
     }
     } // end of loop
 }
@@ -442,7 +495,7 @@ mod test_interpreter {
         let res = interpreter.run(code).unwrap();
         assert_eq!(res, Exp::Int(1));
 
-        let code = "(if (quote #f) 1 0)";
+        let code = "(if #f 1 0)";
         let res = interpreter.run(code).unwrap();
         assert_eq!(res, Exp::Int(0));
 

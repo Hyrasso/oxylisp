@@ -32,7 +32,12 @@ lisp in lisp, metacircular thingy : https://mitpress.mit.edu/sites/default/files
 - [x] what does eval do : takes Exp returns Exp
 - [x] what does sould eval do : takes Exp returns Result< Exp>
     - [ ] : better errors, giving actual info
-- implement Fundamental forms: ✓ define, ✓ lambda, ✓ quote, ✓ if, define-syntax, let-syntax, letrec-syntax, syntax-rules, ✓ set!
+- implement Fundamental forms: ✓ define, ✓ lambda, ✓ quote, ✓ if, define-syntax, let-syntax, letrec-syntax, syntax-rules, ✓ set!  
+    load derived form from file?
+- [ ] : syntax stuff (define-syntax, syntax-rules)
+    It seems like the scoping rules for syntax rules are the same as for lambda, they should be called the same way lambda are (pointing the env to where it was at definition time)
+    Syntactic things args are not evaluated before evaluating the syntax, syntax returns code to be executed
+    Lambda args are evaluated and then the lambda code is evaluated
 - implement some std funct (maths, comp is a good start), see for things with side effects (print, i/o)  
     std funct needs either a new exp type or maybe they could be implemented alongside keywords like if, define, ... 
     - maths (+-/*)

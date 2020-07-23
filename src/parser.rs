@@ -5,11 +5,10 @@ fn remove_comments(text: &str) -> String {
     let mut text = text.to_string();
     while let Some(start_index) = text.find(";") {
         if let Some(offset) = text[start_index..].find("\n") {
-            for _ in 0..offset {
-                text.remove(start_index);
-            }
+            // println!(text[start_index..end_index]);
+            text.replace_range(start_index..(start_index+offset), "");
         } else {
-            text = text[start_index..].to_string();
+            text = text[..start_index].to_string();
         }
     }
     text
@@ -19,6 +18,11 @@ pub fn tokenize(text: &str) -> Vec<Token> {
     let text = remove_comments(text);
     text.replace("(", " ( ")
         .replace(")", " ) ")
+        .replace("'", " ' ")
+        .replace("`", " ` ")
+        .replace(",@", " ,@ ")
+        .replace(",", " , ")
+        .replace(", @", ",@")
         .split_whitespace()
         .map(Token::from)
         .collect()
@@ -30,7 +34,11 @@ pub enum Token {
     Float(f64),
     Symbol(String),
     LParen,
-    RParen
+    RParen,
+    Quote,
+    Quasiquote,
+    Unquote,
+    UnquoteSplicing
 }
 
 impl From<&str> for Token {
@@ -44,6 +52,10 @@ impl From<&str> for Token {
             match token {
                 "(" => Token::LParen,
                 ")" => Token::RParen,
+                "'" => Token::Quote,
+                "`" => Token::Quasiquote,
+                "," => Token::Unquote,
+                ",@" => Token::UnquoteSplicing,
                 token => Token::Symbol(token.to_owned())
             }
         }
@@ -54,16 +66,19 @@ mod test {
     #[allow(unused_imports)]
     use super::*;
 
+    #[test]
     fn test_remove_comments() {
+        let text = ";une ligne commentée\n;une ligne commentée\nbla 😀;un commentaéidddre\n rien ici\nthe ;end";
+        let result = remove_comments(text);
         assert_eq!(
-            remove_comments("bla;un commentaire\n rien ici\n;une ligne commentée\nthe ;end"),
-            "bla\n rien ici\n\nthe ".to_string()
+            result,
+            "\n\nbla 😀\n rien ici\nthe ".to_string()
         );
     }
 
     #[test]
     fn tokenizer() {
-        let data = "(print 1 (+ 1.1 3e5))\n (blop) ";
+        let data = "(print 1 (+ 1.1 3e5))";
         let tokens = tokenize(data);
         assert_eq!(tokens, vec![
             Token::LParen,
@@ -74,11 +89,32 @@ mod test {
             Token::Float(1.1),
             Token::Float(3e5),
             Token::RParen,
-            Token::RParen,
+            Token::RParen
+            ]);
+
+        let data = "('blop)";
+        let tokens = tokenize(data);
+        assert_eq!(tokens, vec![
             Token::LParen,
+            Token::Quote,
             Token::Symbol("blop".to_owned()),
             Token::RParen
         ]);
-    }
 
+        let data = "`(a ,b ,@(a b))";;
+        let tokens = tokenize(data);
+        assert_eq!(tokens, vec![
+            Token::Quasiquote,
+            Token::LParen,
+            Token::Symbol("a".to_owned()),
+            Token::Unquote,
+            Token::Symbol("b".to_owned()),
+            Token::UnquoteSplicing,
+            Token::LParen,
+            Token::Symbol("a".to_owned()),
+            Token::Symbol("b".to_owned()),
+            Token::RParen,
+            Token::RParen
+        ]);
+    }
 }
