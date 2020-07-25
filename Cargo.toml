@@ -5,3 +5,11 @@ authors = ["Grégoire de Massé <demasse.gregoire@yahoo.fr>"]
 edition = "2018"
 
 [dependencies]
+
+[lib]
+name = "oxylisp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "oxylisp"
+path = "src/main.rs"

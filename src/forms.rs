@@ -1,4 +1,5 @@
-use super::interpreter::{eval, Env, Error, Exp, Lambda, Syntax};
+use super::interpreter::{eval, Env, Error, Exp};
+use super::types::{Lambda, Syntax};
 use std::rc::Rc;
 
 pub fn define(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> {

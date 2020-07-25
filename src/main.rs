@@ -1,10 +1,4 @@
-mod interpreter;
-use interpreter::*;
-mod parser;
-use parser::*;
-mod forms;
-use forms::*;
-mod procedures;
+use oxylisp::interpreter;
 
 use std::env;
 use std::fs;
@@ -36,7 +30,10 @@ fn repl() {
     print_repl_input();
     for line in stdin.lock().lines() {
         let res = interperter.run(&line.unwrap());
-        println!("{:?}", res);
+        match res {
+            Ok(res) => println!("{}", res),
+            Err(e) => println!("{:?}", e)
+        }
         print_repl_input();
     }
 }
