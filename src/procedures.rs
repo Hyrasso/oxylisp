@@ -10,25 +10,37 @@ pub fn add(expression: Vec<Exp>, _environment: Rc<Env>) -> Result<Exp, Error> {
     match expression[..] {
         [Exp::Int(a), Exp::Int(b)] => Ok(Exp::Int(a + b)),
         [Exp::Float(a), Exp::Float(b)] => Ok(Exp::Float(a + b)),
-        _ => Err(Error::SyntaxError)
+        _ => Err(Error::SyntaxError("+ expects 2 arguments".to_string(), None))
     }
     
+}
+
+pub fn mul(expression: Vec<Exp>, _environment: Rc<Env>) -> Result<Exp, Error> {
+    match expression[..] {
+        [Exp::Int(a), Exp::Int(b)] => Ok(Exp::Int(a * b)),
+        [Exp::Float(a), Exp::Float(b)] => Ok(Exp::Float(a * b)),
+        _ => Err(Error::SyntaxError("* expects 2 arguments".to_string(), None))
+    }   
 }
 
 // rewrite with the port thing and stdout
 pub fn write(expression: Vec<Exp>, _environment: Rc<Env>) -> Result<Exp, Error> {
     if expression.len() < 1 {
-        println!("{:?}", expression[0]);
-        Ok(expression[0].clone())
+        print!("{:?}", expression[0]);
+        Ok(Exp::List(vec![]))
     } else {
-        println!("{:?}", expression);
-        Ok(Exp::List(expression))
+        print!("{:?}", expression);
+        Ok(Exp::List(vec![]))
     }
 }
 
-// fn gt
-
-// fn sub   
+pub fn gt(expression: Vec<Exp>, _environment: Rc<Env>) -> Result<Exp, Error> {
+    match expression[..] {
+        [Exp::Int(a), Exp::Int(b)] => Ok(Exp::Bool(a > b)),
+        [Exp::Float(a), Exp::Float(b)] => Ok(Exp::Bool(a > b)),
+        _ => Err(Error::SyntaxError("> expects 2 arguments".to_string(), None))
+    }   
+} 
 
 // fn car
 
