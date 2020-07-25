@@ -7,8 +7,8 @@ use forms::*;
 mod procedures;
 
 use std::env;
-use std::io::{BufRead, self, Write};
 use std::fs;
+use std::io::{self, BufRead, Write};
 
 fn main() -> io::Result<()> {
     let args: Vec<_> = env::args().collect();

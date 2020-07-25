@@ -17,10 +17,12 @@ lisp in lisp, metacircular thingy : https://mitpress.mit.edu/sites/default/files
 
 # TODOs
 
-- [ ] : Tail recurseion and everything in there: http://norvig.com/lispy2.html
+- [x] : Tail recurseion 
+    - [ ] and everything in there: http://norvig.com/lispy2.html
 - [x] a repl
     - better error handling to not be kicked out all the time
-- [ ] executing from files, maybe some load macro
+- [x] executing from files
+    - [ ] maybe some load macro
 - [ ] refactor: how does interpreter, env and eval relates to each other code wise  
     improve exp generation from string, clumsy (exp_from_token seems a bit weird and not in the right place)
 - [ ] : explore the use of Rc::clone each time eval needs to be passed as ref is called, might not be necessary

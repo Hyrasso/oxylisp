@@ -6,7 +6,7 @@ fn remove_comments(text: &str) -> String {
     while let Some(start_index) = text.find(";") {
         if let Some(offset) = text[start_index..].find("\n") {
             // println!(text[start_index..end_index]);
-            text.replace_range(start_index..(start_index+offset), "");
+            text.replace_range(start_index..(start_index + offset), "");
         } else {
             text = text[..start_index].to_string();
         }
@@ -15,7 +15,7 @@ fn remove_comments(text: &str) -> String {
 }
 
 // TODO: iterator from buffer with () counting to break between exp?
-// reading from buffer can also simplify comments handeling 
+// reading from buffer can also simplify comments handeling
 pub fn tokenize(text: &str) -> Vec<Token> {
     let text = remove_comments(text);
     text.replace("(", " ( ")
@@ -40,7 +40,7 @@ pub enum Token {
     Quote,
     Quasiquote,
     Unquote,
-    UnquoteSplicing
+    UnquoteSplicing,
 }
 
 impl From<&str> for Token {
@@ -58,7 +58,7 @@ impl From<&str> for Token {
                 "`" => Token::Quasiquote,
                 "," => Token::Unquote,
                 ",@" => Token::UnquoteSplicing,
-                token => Token::Symbol(token.to_owned())
+                token => Token::Symbol(token.to_owned()),
             }
         }
     }
@@ -72,62 +72,71 @@ mod test {
     fn test_remove_comments() {
         let text = ";une ligne commentée\n;une ligne commentée\nbla 😀;un commentaéidddre\n rien ici\nthe ;end";
         let result = remove_comments(text);
-        assert_eq!(
-            result,
-            "\n\nbla 😀\n rien ici\nthe ".to_string()
-        );
+        assert_eq!(result, "\n\nbla 😀\n rien ici\nthe ".to_string());
     }
 
     #[test]
     fn tokenizer() {
         let data = "(print 1 (+ 1.1 3e5))";
         let tokens = tokenize(data);
-        assert_eq!(tokens, vec![
-            Token::LParen,
-            Token::Symbol("print".to_owned()), 
-            Token::Integer(1),
-            Token::LParen,
-            Token::Symbol("+".to_owned()),
-            Token::Float(1.1),
-            Token::Float(3e5),
-            Token::RParen,
-            Token::RParen
-            ]);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::LParen,
+                Token::Symbol("print".to_owned()),
+                Token::Integer(1),
+                Token::LParen,
+                Token::Symbol("+".to_owned()),
+                Token::Float(1.1),
+                Token::Float(3e5),
+                Token::RParen,
+                Token::RParen
+            ]
+        );
 
         let data = "('blop)";
         let tokens = tokenize(data);
-        assert_eq!(tokens, vec![
-            Token::LParen,
-            Token::Quote,
-            Token::Symbol("blop".to_owned()),
-            Token::RParen
-        ]);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::LParen,
+                Token::Quote,
+                Token::Symbol("blop".to_owned()),
+                Token::RParen
+            ]
+        );
 
         let data = "'`,@(blop)";
         let tokens = tokenize(data);
-        assert_eq!(tokens, vec![
-            Token::Quote,
-            Token::Quasiquote,
-            Token::UnquoteSplicing,
-            Token::LParen,
-            Token::Symbol("blop".to_owned()),
-            Token::RParen
-        ]);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Quote,
+                Token::Quasiquote,
+                Token::UnquoteSplicing,
+                Token::LParen,
+                Token::Symbol("blop".to_owned()),
+                Token::RParen
+            ]
+        );
 
-        let data = "`(a ,b ,@(a b))";;
+        let data = "`(a ,b ,@(a b))";
         let tokens = tokenize(data);
-        assert_eq!(tokens, vec![
-            Token::Quasiquote,
-            Token::LParen,
-            Token::Symbol("a".to_owned()),
-            Token::Unquote,
-            Token::Symbol("b".to_owned()),
-            Token::UnquoteSplicing,
-            Token::LParen,
-            Token::Symbol("a".to_owned()),
-            Token::Symbol("b".to_owned()),
-            Token::RParen,
-            Token::RParen
-        ]);
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Quasiquote,
+                Token::LParen,
+                Token::Symbol("a".to_owned()),
+                Token::Unquote,
+                Token::Symbol("b".to_owned()),
+                Token::UnquoteSplicing,
+                Token::LParen,
+                Token::Symbol("a".to_owned()),
+                Token::Symbol("b".to_owned()),
+                Token::RParen,
+                Token::RParen
+            ]
+        );
     }
 }
