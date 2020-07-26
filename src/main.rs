@@ -28,11 +28,16 @@ fn repl() {
     let stdin = io::stdin();
     let mut interperter = interpreter::Interpreter::new();
     print_repl_input();
+    // todo: do not break on lines but expression
+    // rewrite parsing in a stream way?
+    // maybe by keeping track of the current char at parse level we can show around where the errors come from
+    // parser reads from stream, char by char -> iterator that returns exp to be evaluated
+    // with some info about where the expression came from (start and stop chars)
     for line in stdin.lock().lines() {
         let res = interperter.run(&line.unwrap());
         match res {
             Ok(res) => println!("{}", res),
-            Err(e) => println!("{:?}", e)
+            Err(e) => println!("Error: {}", e)
         }
         print_repl_input();
     }

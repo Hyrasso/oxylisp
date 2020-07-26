@@ -20,6 +20,12 @@ pub enum Exp {
     Syntax(Syntax),
 }
 
+impl From<&str> for Exp {
+    fn from(s: &str) -> Self {
+        Exp::Symbol(s.to_string())
+    }
+}
+
 // TODO: tests for display
 impl Display for Exp {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -265,9 +271,9 @@ pub fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                 // TODO: add some syntax check
                 // ex check that the number of exp in the list is coherent for each keyword
                 // lookup rust slice pattern, something like [a, b, c] = rest
-                // empty list is equivalent to nil and constant?
+                // empty list is an error (not equivalent to nil and constant)
                 if expressions.len() == 0 {
-                    return Ok(Exp::List(vec![]));
+                    return Err(Error::SyntaxError("The empty list '() cannot be evaluated".to_string(), None));
                 }
                 let (first, rest) = expressions.split_first_mut().unwrap();
                 let mut rest = rest.to_vec();
@@ -398,7 +404,7 @@ impl Display for Error {
         match self {
             Error::UndefinedSymbol(symbol) => write!(f, "Symbol not defined: {}", symbol),
             Error::SyntaxError(text, Some(exp)) => {
-                write!(f, "Syntax error: {} for exp: {:?}", text, exp)
+                write!(f, "Syntax error: {} for exp: {}", text, exp)
             }
             Error::SyntaxError(text, None) => write!(f, "Syntax error: {}", text),
             Error::NotImplemented => write!(
@@ -432,6 +438,7 @@ impl Interpreter {
         env.insert("*".to_string(), Exp::Procedure(mul));
         env.insert(">".to_string(), Exp::Procedure(gt));
         env.insert("write".to_string(), Exp::Procedure(write));
+        env.insert("dbg".to_string(), Exp::Procedure(dbg));
 
         Interpreter {
             environment: Rc::new(env),

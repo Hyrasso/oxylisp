@@ -1,11 +1,15 @@
-use crate::interpreter::{Env, Exp, Error};
-use std::{fmt::{Formatter, Debug, self}, rc::Rc, collections::HashMap};
+use crate::interpreter::{Env, Error, Exp};
 use fmt::Display;
+use std::{
+    collections::HashMap,
+    fmt::{self, Debug, Formatter},
+    rc::Rc,
+};
 
 // at some point will probably need to replace some vec with linked list, or custom pair
 // use std::collections::LinkedList;
 // enum pair {some((Rc?Exp, pair))}
-
+// TODO: find a way to make lambda eq, keep an id?, some hash fct?
 #[derive(Clone)]
 pub struct Lambda {
     pub body: Vec<Exp>,
@@ -123,7 +127,7 @@ impl Syntax {
     ) -> Result<bool, Error> {
         match &pattern {
             Exp::Symbol(symbol) => {
-                if symbol == "_" {
+                if symbol == "_" && !self.keywords.contains(&"_".to_string()) {
                     Ok(true)
                 // match keyword
                 } else if self.keywords.contains(symbol) {
@@ -158,6 +162,7 @@ impl Syntax {
                         .position(|e| e == &Exp::Symbol(self.ellipsis.clone()))
                     {
                         let ellipsis_index = index + 1;
+                        let ellipsed_start = ellipsis_index - 1;
                         // (body ...) also match ()
                         if expressions.len() == 0
                             && patterns.len() == 2
@@ -165,27 +170,30 @@ impl Syntax {
                         {
                             return Ok(true);
                         }
-                        // (body1 body2 ...) (e1 e2)
-                        if expressions.len() < patterns.len() {
+                        // (body1 body2 ...) (e1)
+                        if expressions.len() < patterns.len() - 2 {
                             return Ok(false);
                         }
-                        // zip (p1 p2 ... p-2 p-1) (e1 e2 e3 e4 e5 e6) -> (e1 p1) (e2 p2)
+
+                        // zip (p1 p2 p3 ... p-2 p-1) (e1 e2 e3 e4 e5 e6) -> (e1 p1) (e2 p2)
+                        // do not match the pattern preceding the ellipsis
                         for (exp, pattern) in
-                            expressions[..ellipsis_index].iter().zip(patterns.iter())
+                            expressions[..ellipsed_start].iter().zip(patterns.iter())
                         {
                             if !self.matches(pattern.clone(), exp.clone(), &mut env)? {
                                 return Ok(false);
                             }
                         }
                         let tail_count = patterns.len() - (ellipsis_index + 1);
-                        let ellipsed_count = expressions.len() - ellipsis_index - tail_count;
+                        let ellipsed_count = expressions.len() - (ellipsis_index - 1) - tail_count;
+                        // eprintln!("Matching ellipsis against {:?}", &expressions[(ellipsis_index - 1)..ellipsis_index + ellipsed_count]);
                         if ellipsed_count > 0 {
-                            // (p1 p2 ... p-2 p-1) (e1 e2 e3 e4 e5 e6) -> (e3 p2) (e4 p2)
+                            // (p1 p2 p3 ... p-2 p-1) (e1 e2 e3 e4 e5 e6) -> (e3 p3) (e4 p3)
                             for exp in
-                                expressions[ellipsis_index..ellipsis_index + ellipsed_count].iter()
+                                expressions[ellipsed_start..ellipsed_start + ellipsed_count].iter()
                             {
                                 if !self.matches(
-                                    patterns[ellipsis_index - 1].clone(),
+                                    patterns[ellipsed_start].clone(),
                                     exp.clone(),
                                     &mut env,
                                 )? {
@@ -194,7 +202,7 @@ impl Syntax {
                             }
                         }
                         if tail_count > 0 {
-                            // (p1 p2 ... p-2 p-1) (e1 e2 e3 e4 e5 e6) -> (e5 p-2) (e6 p-1)
+                            // (p1 p2 p3 ... p-2 p-1) (e1 e2 e3 e4 e5 e6) -> (e5 p-2) (e6 p-1)
                             for (exp, pattern) in expressions[expressions.len() - tail_count..]
                                 .iter()
                                 .zip(patterns[patterns.len() - tail_count..].iter())
@@ -239,7 +247,7 @@ impl Syntax {
         match template {
             Exp::Symbol(symbol) => {
                 if let Some(exp) = env.get(&symbol) {
-                    // is never an empty vec
+                    // env elem are never empty vec
                     exp.get(ellipsis_index)
                         .map(Exp::clone)
                         .ok_or(Error::SyntaxExpansion)
@@ -251,19 +259,29 @@ impl Syntax {
                 if expressions.len() == 0 {
                     return Ok(Exp::List(vec![]));
                 }
-                // (body ...) matched ()
-                if expressions.len() == 2 && expressions[1] == Exp::Symbol(self.ellipsis.clone()) {
-                    return Ok(Exp::List(vec![]));
-                }
 
                 // (<ellipsis> pattern) is expanded to: pattern , treating <ellipsis> inside as literal
                 if expressions[0] == Exp::Symbol(self.ellipsis.clone()) {
                     return self.expand(expressions[1].clone(), &env, 0, false);
                 }
+
+                // TODO: refactor, seems very complicated
+                // (body ...) matched ()
+                if expressions.len() == 2
+                    && expressions[1] == Exp::Symbol(self.ellipsis.clone())
+                    && expand_ellipsis
+                {
+                    if let Exp::Symbol(s) = &expressions[1] {
+                        if env.get(s).map(|vec| vec.is_empty()).unwrap_or(false) {
+                            return Ok(Exp::List(vec![]));
+                        }
+                    }
+                }
+
                 let mut expanded_expression = vec![];
                 for (i, expression) in expressions.iter().enumerate() {
                     if expression == &mut Exp::Symbol(self.ellipsis.clone())
-                        && i > 0
+                        && i > 0 // should not happen
                         && expand_ellipsis
                     {
                         for ellipsis_index in 0.. {
@@ -455,6 +473,350 @@ mod test_syntax {
         }
 
         // ellipsis
-        // TODO: (a ...), (a ... b), (a (b c) ...)
+        // (a ...)
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::Symbol("a".to_string()),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![]),
+            &mut env,
+        ) {
+            Ok(true) => (),
+            Ok(false) => panic!("Should match"),
+            Err(e) => panic!("{:?}", e),
+        }
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::Symbol("a".to_string()),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![Exp::Int(0)]),
+            &mut env,
+        ) {
+            Ok(true) => assert_eq!(env["a"], vec![Exp::Int(0)]),
+            Ok(false) => panic!("Should match"),
+            Err(e) => panic!("{:?}", e),
+        }
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::Symbol("a".to_string()),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![Exp::Int(0), Exp::Int(1)]),
+            &mut env,
+        ) {
+            Ok(true) => assert_eq!(env["a"], vec![Exp::Int(0), Exp::Int(1)]),
+            Ok(false) => panic!("Should match"),
+            Err(e) => panic!("{:?}", e),
+        }
+
+        // (a b ...)
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::Symbol("a".to_string()),
+                Exp::Symbol("b".to_string()),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![]),
+            &mut env,
+        ) {
+            Ok(false) => (),
+            Ok(true) => panic!("Should not match"),
+            Err(e) => panic!("{:?}", e),
+        }
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::Symbol("a".to_string()),
+                Exp::Symbol("b".to_string()),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![Exp::Int(0)]),
+            &mut env,
+        ) {
+            Ok(true) => assert_eq!(env["a"], vec![Exp::Int(0)]),
+            Ok(false) => panic!("Should match"),
+            Err(e) => panic!("{:?}", e),
+        }
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::Symbol("a".to_string()),
+                Exp::Symbol("b".to_string()),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![Exp::Int(0), Exp::Int(1), Exp::Int(2)]),
+            &mut env,
+        ) {
+            Ok(true) => assert_eq!(env["b"], vec![Exp::Int(1), Exp::Int(2)]),
+            Ok(false) => panic!("Should match"),
+            Err(e) => panic!("{:?}", e),
+        }
+
+        // (a ... b)
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::Symbol("a".to_string()),
+                Exp::Symbol("<ellipsis>".to_string()),
+                Exp::Symbol("b".to_string()),
+            ]),
+            Exp::List(vec![]),
+            &mut env,
+        ) {
+            Ok(false) => (),
+            Ok(true) => panic!("Should not match"),
+            Err(e) => panic!("{:?}", e),
+        }
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::Symbol("a".to_string()),
+                Exp::Symbol("<ellipsis>".to_string()),
+                Exp::Symbol("b".to_string()),
+            ]),
+            Exp::List(vec![Exp::Int(0)]),
+            &mut env,
+        ) {
+            Ok(true) => assert_eq!(env["b"], vec![Exp::Int(0)]),
+            Ok(false) => panic!("Should match"),
+            Err(e) => panic!("{:?}", e),
+        }
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::Symbol("a".to_string()),
+                Exp::Symbol("<ellipsis>".to_string()),
+                Exp::Symbol("b".to_string()),
+            ]),
+            Exp::List(vec![Exp::Int(0), Exp::Int(1), Exp::Int(2)]),
+            &mut env,
+        ) {
+            Ok(true) => {
+                assert_eq!(env["a"], vec![Exp::Int(0), Exp::Int(1)]);
+                assert_eq!(env["b"], vec![Exp::Int(2)]);
+            }
+            Ok(false) => panic!("Should match"),
+            Err(e) => panic!("{:?}", e),
+        }
+
+        // ((a b) ...)
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::List(vec![
+                    Exp::Symbol("a".to_string()),
+                    Exp::Symbol("b".to_string()),
+                ]),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![]),
+            &mut env,
+        ) {
+            Ok(true) => (),
+            Ok(false) => panic!("Should match"),
+            Err(e) => panic!("{:?}", e),
+        }
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::List(vec![
+                    Exp::Symbol("a".to_string()),
+                    Exp::Symbol("b".to_string()),
+                ]),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![Exp::List(vec![Exp::Int(0), Exp::Int(1)])]),
+            &mut env,
+        ) {
+            Ok(true) => {
+                assert_eq!(env["a"], vec![Exp::Int(0)]);
+                assert_eq!(env["b"], vec![Exp::Int(1)]);
+            }
+            Ok(false) => panic!("Should match"),
+            Err(e) => panic!("{:?}", e),
+        }
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::List(vec![
+                    Exp::Symbol("a".to_string()),
+                    Exp::Symbol("b".to_string()),
+                ]),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![
+                Exp::List(vec![Exp::Int(0), Exp::Int(1)]),
+                Exp::List(vec![Exp::Int(2), Exp::Int(3)]),
+            ]),
+            &mut env,
+        ) {
+            Ok(true) => {
+                assert_eq!(env["a"], vec![Exp::Int(0), Exp::Int(2)]);
+                assert_eq!(env["b"], vec![Exp::Int(1), Exp::Int(3)]);
+            }
+            Ok(false) => panic!("Should match"),
+            Err(e) => panic!("{:?}", e),
+        }
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::List(vec![
+                    Exp::Symbol("a".to_string()),
+                    Exp::Symbol("b".to_string()),
+                ]),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![Exp::Int(0)]),
+            &mut env,
+        ) {
+            Ok(false) => (),
+            Ok(true) => panic!("Should not match"),
+            Err(e) => panic!("{:?}", e),
+        }
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::List(vec![
+                    Exp::Symbol("a".to_string()),
+                    Exp::Symbol("b".to_string()),
+                ]),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![
+                Exp::List(vec![Exp::Int(0), Exp::Int(1)]),
+                Exp::List(vec![Exp::Int(2), Exp::Int(3)]),
+            ]),
+            &mut env,
+        ) {
+            Ok(true) => {
+                assert_eq!(env["a"], vec![Exp::Int(0), Exp::Int(2)]);
+                assert_eq!(env["b"], vec![Exp::Int(1), Exp::Int(3)]);
+            }
+            Ok(false) => panic!("Should match"),
+            Err(e) => panic!("{:?}", e),
+        }
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::List(vec![
+                    Exp::Symbol("a".to_string()),
+                    Exp::Symbol("b".to_string()),
+                ]),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![
+                Exp::List(vec![Exp::Int(0), Exp::Int(1)]),
+                Exp::List(vec![Exp::Int(2)]),
+            ]),
+            &mut env,
+        ) {
+            Ok(false) => (),
+            Ok(true) => panic!("Should not match"),
+            Err(e) => panic!("{:?}", e),
+        }
+
+        // ((a ...) ...)
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::List(vec![
+                    Exp::Symbol("a".to_string()),
+                    Exp::Symbol("<ellipsis>".to_string()),
+                ]),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![]),
+            &mut env,
+        ) {
+            Ok(true) => (),
+            Ok(false) => panic!("Should match"),
+            Err(e) => panic!("{:?}", e),
+        }
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::List(vec![
+                    Exp::Symbol("a".to_string()),
+                    Exp::Symbol("<ellipsis>".to_string()),
+                ]),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![Exp::List(vec![Exp::Int(0), Exp::Int(1)]), Exp::List(vec![]), Exp::List(vec![Exp::Int(2)])]),
+            &mut env
+        ) {
+            Ok(true) => assert_eq!(env["a"], vec![Exp::Int(0), Exp::Int(1), Exp::Int(2)]),
+            Ok(false) => panic!("Should match"),
+            Err(e) => panic!("{:?}", e),
+        }
+        let mut env = HashMap::new();
+        match syntax.matches(
+            Exp::List(vec![
+                Exp::List(vec![
+                    Exp::Symbol("a".to_string()),
+                    Exp::Symbol("<ellipsis>".to_string()),
+                ]),
+                Exp::Symbol("<ellipsis>".to_string()),
+            ]),
+            Exp::List(vec![Exp::List(vec![Exp::Int(0), Exp::Int(1)]), Exp::Int(2)]),
+            &mut env
+        ) {
+            Ok(false) => (),
+            Ok(true) => panic!("Should not match"),
+            Err(e) => panic!("{:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_expand() {
+        let syntax = Syntax {
+            transforms: Vec::new(),
+            keywords: vec!["keyword".to_string()],
+            ellipsis: "<ellipsis>".to_string()
+        };
+        let mut env = HashMap::new();
+        env.insert("a".to_string(), vec![Exp::Int(0), Exp::Int(1), Exp::Int(2)]);
+        env.insert("b".to_string(), vec![Exp::Int(3), Exp::Int(4), Exp::Int(5)]);
+        env.insert("empty".to_string(), vec![]);
+
+        // a
+        match syntax.expand(Exp::Symbol("a".to_string()), &env, 0, true) {
+            Ok(exp) => assert_eq!(exp, Exp::Int(0)),
+            Err(_) => panic!("Expansion should be correct")
+        }
+        match syntax.expand(Exp::Symbol("test".to_string()), &env, 0, true) {
+            Ok(exp) => assert_eq!(exp, Exp::Symbol("test".to_string())),
+            Err(_) => panic!("Expansion should be correct")
+        }
+        match syntax.expand(Exp::Symbol("empty".to_string()), &env, 0, true) {
+            Ok(_) => panic!("Expansion should be incorrect"),
+            Err(_) => ()
+        }
+
+        // (a b)
+        match syntax.expand(Exp::List(vec![Exp::Int(0), Exp::Symbol("a".to_string())]), &env, 0, true) {
+            Ok(exp) => assert_eq!(exp, Exp::List(vec![Exp::Int(0), Exp::Int(0)])),
+            Err(_) => panic!("Expansion should be correct")
+        }
+        match syntax.expand(Exp::List(vec![Exp::Int(0), "test".into()]), &env, 0, true) {
+            Ok(exp) => assert_eq!(exp, Exp::List(vec![Exp::Int(0), "test".into()])),
+            Err(_) => panic!("Expansion should be correct")
+        }
+        match syntax.expand(Exp::List(vec![Exp::Int(0), Exp::Symbol("empty".to_string())]), &env, 0, true) {
+            Ok(_) => panic!("Expansion should be incorrect"),
+            Err(_) => ()
+        }
+
+        // (a ...)
+
+        // TODO: (a b ...)
+        // TODO: ((a b) ...)
+        // TODO: ((a ...) b ...)
+        // TODO: (... ...)
     }
 }
