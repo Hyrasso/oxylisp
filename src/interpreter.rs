@@ -38,16 +38,60 @@ impl Display for Exp {
                 } else {
                     write!(f, "#f")
                 }
-            },
+            }
             Exp::Symbol(value) => write!(f, "{}", value),
-            Exp::List(value) => write!(f, "({})", value.iter().map(Exp::to_string).collect::<Vec<_>>().join(" ")),
+            Exp::List(value) => write!(
+                f,
+                "({})",
+                value
+                    .iter()
+                    .map(Exp::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
             Exp::Lambda(value) => write!(f, "{}", value),
             Exp::Procedure(value) => write!(f, "#<Proc {:?}>", value),
             Exp::SyntaxForm(value) => write!(f, "#<Proc {:?}>", value),
-            Exp::Syntax(value) => write!(f, "{}", value)
+            Exp::Syntax(value) => write!(f, "{}", value),
         }
     }
 }
+
+impl Exp {
+    pub fn visit<T>(&self, mut visitor: T)
+    where
+        T: FnMut(&Exp),
+    {
+        match &self {
+            Exp::List(expressions) => expressions.iter().for_each(|e| visitor(e)),
+            exp => visitor(exp),
+        }
+    }
+
+    // refactor: not used atm
+    pub fn visit_mut<T>(&mut self, mut visitor: T)
+    where
+        T: FnMut(&Exp) -> Exp,
+    {
+        match &self {
+            Exp::List(expressions) => *self = Exp::List(expressions.iter().map(visitor).collect()),
+            exp => *self = visitor(exp)
+        }
+    }
+
+    pub fn get_symbol(&self) -> Option<&String> {
+        match &self {
+            Exp::Symbol(symbol) => Some(symbol),
+            _ => None,
+        }
+    }
+
+    // refactor, not used, decide whats better between this and "a".into()
+    pub fn symbol(symbol: &str) -> Exp {
+        Exp::Symbol(symbol.to_string())
+    }
+}
+
 pub fn exp_from_tokens(mut tokens: &mut Vec<Token>) -> Result<Exp, Error> {
     if tokens.is_empty() {
         return Err(Error::SyntaxError("No tokens to process".to_string(), None));
@@ -164,6 +208,25 @@ mod test {
             ])
         );
     }
+
+    #[test]
+    fn test_visit() {
+        let e = Exp::Int(0);
+        e.visit(|exp| assert_eq!(exp, &Exp::Int(0)));
+        
+        let e = Exp::List(vec!["a".into()]);
+        e.visit(|exp| assert_eq!(exp, &Exp::Symbol("a".to_string())));
+
+        
+        let mut e = Exp::Int(0);
+        e.visit_mut(|_exp| Exp::Int(1));
+        assert_eq!(e, Exp::Int(1));
+
+
+        let mut e = Exp::List(vec!["a".into()]);
+        e.visit_mut(|exp| Exp::Symbol(exp.get_symbol().unwrap().clone() + "b"));
+        assert_eq!(e, Exp::List(vec!["ab".into()]));
+    }
 }
 
 pub type EnvMap = HashMap<String, Exp>;
@@ -273,7 +336,10 @@ pub fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                 // lookup rust slice pattern, something like [a, b, c] = rest
                 // empty list is an error (not equivalent to nil and constant)
                 if expressions.len() == 0 {
-                    return Err(Error::SyntaxError("The empty list '() cannot be evaluated".to_string(), None));
+                    return Err(Error::SyntaxError(
+                        "The empty list '() cannot be evaluated".to_string(),
+                        None,
+                    ));
                 }
                 let (first, rest) = expressions.split_first_mut().unwrap();
                 let mut rest = rest.to_vec();

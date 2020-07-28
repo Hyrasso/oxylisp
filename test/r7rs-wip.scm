@@ -45,7 +45,7 @@
 ;;
 (define test-begin write)
 ;;
-(define test-end write)
+(define test-end (lambda x #t))
 ;;
 
 (define (display . args) (write args) #t)
@@ -136,7 +136,6 @@
 (let ()
   (define x 28)
   (test 28 x))
-
 ; TODO: count success
 (define test
   (lambda (expect result)
@@ -198,7 +197,7 @@
 
 (test-end)
 
-(test-begin "4.2 Derived expression types")
+(test-begin '(4.2 Derived expression types))
 
 (test 'greater
     (cond ((> 3 2) 'greater)

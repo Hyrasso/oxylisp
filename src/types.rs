@@ -168,6 +168,16 @@ impl Syntax {
                             && patterns.len() == 2
                             && patterns[1] == Exp::Symbol(self.ellipsis.clone())
                         {
+                            // TODO: check if keyword or _
+                            patterns[0].visit(|exp| {
+                                let symbol = exp.get_symbol().unwrap();
+                                let is_underscore =
+                                    symbol == "_" && !self.keywords.contains(&"_".to_string());
+                                let is_keyword = self.keywords.contains(symbol);
+                                if !is_underscore && !is_keyword && !env.contains_key(symbol) {
+                                    env.insert(symbol.to_string(), vec![]);
+                                }
+                            });
                             return Ok(true);
                         }
                         // (body1 body2 ...) (e1)
@@ -247,7 +257,7 @@ impl Syntax {
         match template {
             Exp::Symbol(symbol) => {
                 if let Some(exp) = env.get(&symbol) {
-                    // env elem are never empty vec
+                    // empty vec should be caught earlier if in ellipsis
                     exp.get(ellipsis_index)
                         .map(Exp::clone)
                         .ok_or(Error::SyntaxExpansion)
@@ -265,28 +275,36 @@ impl Syntax {
                     return self.expand(expressions[1].clone(), &env, 0, false);
                 }
 
-                // TODO: refactor, seems very complicated
-                // (body ...) matched ()
-                if expressions.len() == 2
-                    && expressions[1] == Exp::Symbol(self.ellipsis.clone())
-                    && expand_ellipsis
-                {
-                    if let Exp::Symbol(s) = &expressions[1] {
-                        if env.get(s).map(|vec| vec.is_empty()).unwrap_or(false) {
-                            return Ok(Exp::List(vec![]));
-                        }
-                    }
-                }
+                // TODO: rewrite as : find ellipsis (if any)
+                // ellipsis are expanded as one entity with  corresponding ident
+                // (a b ... c d ...) loop expand (a) (b ...) (c) (d ...)
+
 
                 let mut expanded_expression = vec![];
                 for (i, expression) in expressions.iter().enumerate() {
-                    if expression == &mut Exp::Symbol(self.ellipsis.clone())
-                        && i > 0 // should not happen
+                    // if current exp is ellipsis and expand_ellipsis is true, already handled by following if
+                    if expression == &Exp::Symbol(self.ellipsis.clone()) && expand_ellipsis {
+                        continue;
+                    // look ahead, if next is ellipsis expand everything that ident matched
+                    } else if expressions.get(i + 1) == Some(&Exp::Symbol(self.ellipsis.clone()))
                         && expand_ellipsis
                     {
+                        // body was matched with an () in pattern, expansion of (body ...) is ()
+                        // todo: error if no ident in the body
+                        let mut all_empty = true;
+                        expression.visit(|e| {
+                            if let Some(symbol) = e.get_symbol()  {
+                                // if symbol is an ident that matched with () or anything else, true
+                                all_empty = all_empty && env.get(symbol).map(|vec| vec.is_empty()).unwrap_or(true)
+                            };
+                        });
+                        if all_empty {
+                            continue;
+                        }
+
                         for ellipsis_index in 0.. {
                             match self.expand(
-                                expressions[i - 1].clone(),
+                                expression.clone(),
                                 &env,
                                 ellipsis_index,
                                 expand_ellipsis,
@@ -296,11 +314,12 @@ impl Syntax {
                                 Err(error) => return Err(error),      // stop expansion
                             }
                         }
+
                     } else {
                         expanded_expression.push(self.expand(
                             expression.clone(),
                             &env,
-                            0,
+                            ellipsis_index,
                             expand_ellipsis,
                         )?);
                     }
@@ -747,8 +766,12 @@ mod test_syntax {
                 ]),
                 Exp::Symbol("<ellipsis>".to_string()),
             ]),
-            Exp::List(vec![Exp::List(vec![Exp::Int(0), Exp::Int(1)]), Exp::List(vec![]), Exp::List(vec![Exp::Int(2)])]),
-            &mut env
+            Exp::List(vec![
+                Exp::List(vec![Exp::Int(0), Exp::Int(1)]),
+                Exp::List(vec![]),
+                Exp::List(vec![Exp::Int(2)]),
+            ]),
+            &mut env,
         ) {
             Ok(true) => assert_eq!(env["a"], vec![Exp::Int(0), Exp::Int(1), Exp::Int(2)]),
             Ok(false) => panic!("Should match"),
@@ -764,7 +787,7 @@ mod test_syntax {
                 Exp::Symbol("<ellipsis>".to_string()),
             ]),
             Exp::List(vec![Exp::List(vec![Exp::Int(0), Exp::Int(1)]), Exp::Int(2)]),
-            &mut env
+            &mut env,
         ) {
             Ok(false) => (),
             Ok(true) => panic!("Should not match"),
@@ -774,10 +797,11 @@ mod test_syntax {
 
     #[test]
     fn test_expand() {
+
         let syntax = Syntax {
             transforms: Vec::new(),
             keywords: vec!["keyword".to_string()],
-            ellipsis: "<ellipsis>".to_string()
+            ellipsis: "<ellipsis>".to_string(),
         };
         let mut env = HashMap::new();
         env.insert("a".to_string(), vec![Exp::Int(0), Exp::Int(1), Exp::Int(2)]);
@@ -787,36 +811,126 @@ mod test_syntax {
         // a
         match syntax.expand(Exp::Symbol("a".to_string()), &env, 0, true) {
             Ok(exp) => assert_eq!(exp, Exp::Int(0)),
-            Err(_) => panic!("Expansion should be correct")
+            Err(_) => panic!("Expansion should be correct"),
         }
         match syntax.expand(Exp::Symbol("test".to_string()), &env, 0, true) {
             Ok(exp) => assert_eq!(exp, Exp::Symbol("test".to_string())),
-            Err(_) => panic!("Expansion should be correct")
+            Err(_) => panic!("Expansion should be correct"),
         }
         match syntax.expand(Exp::Symbol("empty".to_string()), &env, 0, true) {
             Ok(_) => panic!("Expansion should be incorrect"),
-            Err(_) => ()
+            Err(_) => (),
         }
-
+        
         // (a b)
-        match syntax.expand(Exp::List(vec![Exp::Int(0), Exp::Symbol("a".to_string())]), &env, 0, true) {
+        match syntax.expand(
+            Exp::List(vec![Exp::Int(0), Exp::Symbol("a".to_string())]),
+            &env,
+            0,
+            true,
+        ) {
             Ok(exp) => assert_eq!(exp, Exp::List(vec![Exp::Int(0), Exp::Int(0)])),
-            Err(_) => panic!("Expansion should be correct")
+            Err(_) => panic!("Expansion should be correct"),
         }
         match syntax.expand(Exp::List(vec![Exp::Int(0), "test".into()]), &env, 0, true) {
             Ok(exp) => assert_eq!(exp, Exp::List(vec![Exp::Int(0), "test".into()])),
-            Err(_) => panic!("Expansion should be correct")
+            Err(_) => panic!("Expansion should be correct"),
         }
-        match syntax.expand(Exp::List(vec![Exp::Int(0), Exp::Symbol("empty".to_string())]), &env, 0, true) {
+        match syntax.expand(
+            Exp::List(vec![Exp::Int(0), Exp::Symbol("empty".to_string())]),
+            &env,
+            0,
+            true,
+        ) {
             Ok(_) => panic!("Expansion should be incorrect"),
-            Err(_) => ()
+            Err(_) => (),
         }
 
         // (a ...)
+        match syntax.expand(
+            Exp::List(vec!["empty".into(), "<ellipsis>".into()]),
+            &env,
+            0,
+            true,
+        ) {
+            Ok(exp) => assert_eq!(exp, Exp::List(vec![])),
+            Err(_) => panic!("Expansion should be correct"),
+        }
+        match syntax.expand(
+            Exp::List(vec!["a".into(), "<ellipsis>".into()]),
+            &env,
+            0,
+            true,
+        ) {
+            Ok(exp) => assert_eq!(exp, Exp::List(vec![Exp::Int(0), Exp::Int(1), Exp::Int(2)])),
+            Err(_) => panic!("Expansion should be correct"),
+        }
 
-        // TODO: (a b ...)
-        // TODO: ((a b) ...)
-        // TODO: ((a ...) b ...)
+        // (a b ...)
+        match syntax.expand(
+            Exp::List(vec!["a".into(), "b".into(), "<ellipsis>".into()]),
+            &env,
+            0,
+            true,
+        ) {
+            Ok(exp) => assert_eq!(
+                exp,
+                Exp::List(vec![Exp::Int(0), Exp::Int(3), Exp::Int(4), Exp::Int(5)])
+            ),
+            Err(_) => panic!("Expansion should be correct"),
+        }
+        match syntax.expand(
+            Exp::List(vec!["a".into(), "empty".into(), "<ellipsis>".into()]),
+            &env,
+            0,
+            true,
+        ) {
+            Ok(exp) => assert_eq!(exp, Exp::List(vec![Exp::Int(0)])),
+            Err(_) => panic!("Expansion should be correct"),
+        }
+        match syntax.expand(
+            Exp::List(vec!["empty".into(), "a".into(), "<ellipsis>".into()]),
+            &env,
+            0,
+            true,
+        ) {
+            Ok(_) => panic!("Expansion should not be correct"),
+            Err(_) => (),
+        }
+
+        // // TODO: ((a b) ...)
+        match syntax.expand(
+            Exp::List(vec![
+                Exp::List(vec!["a".into(), "b".into()]),
+                "<ellipsis>".into(),
+            ]),
+            &env,
+            0,
+            true,
+        ) {
+            Ok(e) => assert_eq!(
+                e,
+                Exp::List(vec![
+                    Exp::List(vec![Exp::Int(0), Exp::Int(3)]),
+                    Exp::List(vec![Exp::Int(1), Exp::Int(4)]),
+                    Exp::List(vec![Exp::Int(2), Exp::Int(5)])
+                ])
+            ),
+            Err(e) => panic!("Expansion should be correct, {:?}", e),
+        }
+        match syntax.expand(
+            Exp::List(vec![
+                Exp::List(vec!["a".into(), "empty".into()]),
+                "<ellipsis>".into(),
+            ]),
+            &env,
+            0,
+            true,
+        ) {
+            Ok(e) => assert_eq!(e, Exp::List(vec![])),
+            Err(e) => panic!("Expansion should be correct, {:?}", e),
+        }
+        
         // TODO: (... ...)
     }
 }

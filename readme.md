@@ -23,6 +23,7 @@ lisp in lisp, metacircular thingy : https://mitpress.mit.edu/sites/default/files
     - better error handling to not be kicked out all the time
 - [x] executing from files
     - [ ] better error when executing from file (probably imply some changs to parser or tokentoexp)
+- [ ] implement import and load, important for testing implementation as they are usually the first thing in a test file
 - [ ] refactor: how does interpreter, env and eval relates to each other code wise  
     improve exp generation from string, clumsy (exp_from_token is a bit weird and probably not in the right place)
 - [ ] : explore the use of Rc::clone each time eval needs to be passed as ref is called, might not be necessary, and ownership to remove some unecessary clones (slice destructuring, split_off, split_first, ... are usefull)
@@ -79,3 +80,4 @@ lisp in lisp, metacircular thingy : https://mitpress.mit.edu/sites/default/files
     (foo 1 2)
     ```
     Having the list on the heap would be a solution, this code is also data thing is weird 
+- syntax rule ((_ a ...) (display a)) is valid (prints the first a matched), it should be an error, something like ellipsis expected
