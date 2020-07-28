@@ -1,4 +1,5 @@
 use From;
+use super::interpreter::{Exp, Error};
 
 // TODO: multiline comment #| or expr comment #;
 fn remove_comments(text: &str) -> String {
@@ -64,6 +65,64 @@ impl From<&str> for Token {
     }
 }
 
+pub fn exp_from_tokens(mut tokens: &mut Vec<Token>) -> Result<Exp, Error> {
+    if tokens.is_empty() {
+        return Err(Error::SyntaxError("No tokens to process".to_string(), None));
+    }
+
+    let token = tokens.remove(0);
+    match token {
+        Token::LParen => {
+            let mut args = vec![];
+            while tokens.get(0).ok_or(Error::SyntaxError(
+                "Missing closing paren".to_string(),
+                None,
+            ))? != &Token::RParen
+            {
+                args.push(exp_from_tokens(&mut tokens)?);
+            }
+            // remove ')'
+            tokens.remove(0);
+            Ok(Exp::List(args))
+        }
+        Token::Integer(value) => Ok(Exp::Int(value)),
+        Token::Float(value) => Ok(Exp::Float(value)),
+        Token::Symbol(value) => {
+            if &value == "#f" {
+                Ok(Exp::Bool(false))
+            } else if &value == "#t" {
+                Ok(Exp::Bool(true))
+            } else {
+                Ok(Exp::Symbol(value))
+            }
+        }
+        Token::RParen => Err(Error::SyntaxError(
+            "Unexpected closing paren".to_string(),
+            None,
+        )),
+        // Lots of refactor todo around here
+        quoting @ Token::Quote
+        | quoting @ Token::Unquote
+        | quoting @ Token::UnquoteSplicing
+        | quoting @ Token::Quasiquote => {
+            let quoted = exp_from_tokens(&mut tokens)?;
+            let quote_symbol = match quoting {
+                Token::Quote => Exp::Symbol("quote".to_string()),
+                Token::Quasiquote => Exp::Symbol("quasiquote".to_string()),
+                Token::Unquote => Exp::Symbol("unquote".to_string()),
+                Token::UnquoteSplicing => Exp::Symbol("unquote-splicing".to_string()),
+                _ => unreachable!(),
+            };
+            Ok(Exp::List(vec![quote_symbol, quoted]))
+        }
+    }
+}
+
+pub fn parse(text: &str) -> Result<Exp, Error> {
+    exp_from_tokens(&mut tokenize(text))
+}
+
+#[cfg(test)]
 mod test {
     #[allow(unused_imports)]
     use super::*;

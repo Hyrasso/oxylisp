@@ -34,6 +34,8 @@
 ;         (chibi test)  ; or (srfi 64)
 ;         )
 
+(load './src/libs/derived_forms.scm)
+
 ;; R7RS test suite.  Covers all procedures and syntax in the small
 ;; language except `delete-file'.  Currently assumes full-unicode
 ;; support, the full numeric tower and all standard libraries
@@ -52,10 +54,16 @@
 
 (define (newline) (write '---------------------------------------------------))
 
+(define test-count 0)
+
 (define-syntax test
   (syntax-rules ()
     ((test expected expr)
       (let ((res expr))
+        (set! test-count (+ 1 test-count))
+        (write '(Running test))
+        (write test-count)
+        (write '\n)
         (cond
         ((not (equal? expr expected))
           (display '"FAIL: ")
@@ -73,69 +81,10 @@
 
 (test-begin '(4.1 Primitive expression types))
 
-; (define-syntax begin (syntax-rules () ((begin body ...) ((lambda () body ...)))))
-
-(define-syntax cond
-  (syntax-rules (else =>)
-    ((cond (else result1 result2 ...))
-      (begin result1 result2 ...))
-    ((cond (test => result))
-      (let ((temp test))
-        (if temp (result temp))))
-    ((cond (test => result) clause1 clause2 ...)
-      (let ((temp test))
-        (if temp
-            (result temp)
-            (cond clause1 clause2 ...))))
-    ((cond (test)) test)
-    ((cond (test) clause1 clause2 ...)
-      (let ((temp test))
-        (if temp
-            temp
-            (cond clause1 clause2 ...))))
-    ((cond (test result1 result2 ...))
-      (if test (begin result1 result2 ...)))
-    ((cond (test result1 result2 ...)clause1 clause2 ...)
-      (if test
-        (begin result1 result2 ...)
-        (cond clause1 clause2 ...)))))
-
-
-(define-syntax let 
-  (syntax-rules ()
-    ((let ((name val) ...) body1 body2 ...)
-      ((lambda (name ...) body1 body2 ...) val ...))
-    ((let tag ((name val) ...) body1 body2 ...)
-      ((letrec ((tag (lambda (name ...) body1 body2 ...)))
-        tag)
-      val ...))))
-
-; (define-syntax let (syntax-rules () ((let ((name val) ...) body1 body2 ...) ((lambda (name ...) body1 body2 ...) val ...))))
-
-(define-syntax letrec
-  (syntax-rules ()
-    ((letrec ((var1 init1) ...) body ...)
-      (letrec 'generatetempnames
-        (var1 ...)
-        ()
-        ((var1 init1) ...)
-        body ...))
-    ((letrec 'generatetempnames () (temp1 ...) ((var1 init1) ...) body ...)
-      (let ((var1 <undefined>) ...)
-        (let ((temp1 init1) ...)
-          (set! var1 temp1) ...
-          body ...)))
-    ((letrec 'generatetempnames (x y ...) (temp ...) ((var1 init1) ...) body ...)
-      (letrec 'generatetempnames 
-        (y ...)
-        (newtemp temp ...)
-        ((var1 init1) ...)
-        body ...))))
-
-; TODO: implement/derive let
 (let ()
   (define x 28)
   (test 28 x))
+  
 ; TODO: count success
 (define test
   (lambda (expect result)
@@ -208,29 +157,32 @@
           ((< 3 3) 'less)
           (else 'equal)))
 
-(test 2
-    (cond ((assv 'b '((a 1) (b 2))) => cadr)
-          (else #f)))
+; TODO
+; (test 2
+;     (cond ((assv 'b '((a 1) (b 2))) => cadr)
+;           (else #f)))
 
-(test 'composite
-    (case (* 2 3)
-      ((2 3 5 7) 'prime)
-      ((1 4 6 8 9) 'composite)))
+; case needs memv
+; (test 'composite
+;     (case (* 2 3)
+;       ((2 3 5 7) 'prime)
+;       ((1 4 6 8 9) 'composite)))
 
-(test 'c
-    (case (car '(c d))
-      ((a e i o u) 'vowel)
-      ((w y) 'semivowel)
-      (else => (lambda (x) x))))
+; (test 'c
+;     (case (car '(c d))
+;       ((a e i o u) 'vowel)
+;       ((w y) 'semivowel)
+;       (else => (lambda (x) x))))
 
-(test '((other . z) (semivowel . y) (other . x)
-        (semivowel . w) (vowel . u))
-    (map (lambda (x)
-           (case x
-             ((a e i o u) => (lambda (w) (cons 'vowel w)))
-             ((w y) (cons 'semivowel x))
-             (else => (lambda (w) (cons 'other w)))))
-         '(z y x w u)))
+; TODO
+; (test '((other . z) (semivowel . y) (other . x)
+;         (semivowel . w) (vowel . u))
+;     (map (lambda (x)
+;            (case x
+;              ((a e i o u) => (lambda (w) (cons 'vowel w)))
+;              ((w y) (cons 'semivowel x))
+;              (else => (lambda (w) (cons 'other w)))))
+;          '(z y x w u)))
 
 (test #t (and (= 2 2) (> 2 1)))
 (test #f (and (= 2 2) (< 2 1)))
@@ -240,8 +192,9 @@
 (test #t (or (= 2 2) (> 2 1)))
 (test #t (or (= 2 2) (< 2 1)))
 (test #f (or #f #f #f))
-(test '(b c) (or (memq 'b '(a b c))
-    (/ 3 0)))
+; TODO
+; (test '(b c) (or (memq 'b '(a b c))
+;     (/ 3 0)))
 
 (test 6 (let ((x 2) (y 3))
   (* x y)))
@@ -1232,7 +1185,8 @@
 (test #f (memq (list 'a) '(b (a) c)))
 (test '((a) c) (member (list 'a) '(b (a) c)))
 (test '("b" "c") (member "B" '("a" "b" "c") string-ci=?))
-(test '(101 102) (memv 101 '(100 101 102)))
+; TODO
+; (test '(101 102) (memv 101 '(100 101 102)))
 
 (let ()
   (define e '((a 1) (b 2) (c 3)))

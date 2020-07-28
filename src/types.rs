@@ -55,7 +55,10 @@ impl Display for Lambda {
     }
 }
 
-type Transform = fn(Vec<Exp>, Rc<Env>) -> Result<Exp, Error>;
+// TODO: replace with impl trait Fn(Vec<Exp>, Rc<Env>) -> Result<Exp, Error>
+// i think it'll make implementing std proc a lot easier
+// probably used with macro for somthing like proc!("+", [Exp::Int(a), Exp::Int(b)], |a, b| Exp::Int(a + b))
+pub type Transform = fn(Vec<Exp>, Rc<Env>) -> Result<Exp, Error>;
 
 #[derive(Debug, Clone)]
 pub struct SyntaxForm {
@@ -331,6 +334,7 @@ impl Syntax {
     }
 }
 
+#[cfg(test)]
 mod test_syntax {
     #[allow(unused_imports)]
     use super::*;

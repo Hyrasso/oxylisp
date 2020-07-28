@@ -1,6 +1,6 @@
-use super::interpreter::{Exp, Env, Error};
+use super::interpreter::{Exp, Env, Error, Interpreter};
 
-use std::rc::Rc;
+use std::{fs, rc::Rc};
 
 // TODO: Some macro like #[proc(name, ?lib)] to generate a list of all the proc exported for a lib
 pub fn equal(expression: Vec<Exp>, _environment: Rc<Env>) -> Result<Exp, Error> {
@@ -48,3 +48,15 @@ pub fn gt(expression: Vec<Exp>, _environment: Rc<Env>) -> Result<Exp, Error> {
 // fn car
 
 // fn cdr
+
+pub fn load(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> {
+    if let Exp::Symbol(filename) = &expression[0] {
+        let mut interpreter = Interpreter {environment: Rc::clone(&environment)};
+        let code = fs::read_to_string(filename).map_err(|e| {
+            Error::RuntimeError(e.to_string() + &format!(" path: {}", filename))
+        })?;
+        interpreter.run_file(&code)
+    } else {
+        Err(Error::SyntaxError("Expected a file name".to_string(), Some(expression[0].clone())))
+    }
+}

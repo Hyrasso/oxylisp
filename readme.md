@@ -24,8 +24,8 @@ lisp in lisp, metacircular thingy : https://mitpress.mit.edu/sites/default/files
 - [x] executing from files
     - [ ] better error when executing from file (probably imply some changs to parser or tokentoexp)
 - [ ] implement import and load, important for testing implementation as they are usually the first thing in a test file
-- [ ] refactor: how does interpreter, env and eval relates to each other code wise  
-    improve exp generation from string, clumsy (exp_from_token is a bit weird and probably not in the right place)
+- [ ] refactor: how does interpreter, env and eval relates to each other code wise, is interpreter useful? keeping an env and passing it to eval like functions is exactly the same, with similar complexity
+- [ ] improve exp generation from string, clumsy (exp_from_token is a bit weird and probably not in the right place)
 - [ ] : explore the use of Rc::clone each time eval needs to be passed as ref is called, might not be necessary, and ownership to remove some unecessary clones (slice destructuring, split_off, split_first, ... are usefull)
 - [ ] : Better unit testing -> testing functions separatly and more tests
     - [ ] : test language implementation in integrations test, not unit tests 
@@ -60,11 +60,19 @@ lisp in lisp, metacircular thingy : https://mitpress.mit.edu/sites/default/files
 
 ## Types
 - [ ] pairs (cyclic refs?)
-    - [ ] consider making pairs the default type
+    - [ ] consider making pairs the default type for lists
 - [ ] string
+    [ ] char?
+- [ ] vector
+    - [ ] byte vector
+- [ ] null
+- [ ] complex, decimals
+- [ ] port
 
 ## Parser
-
+- [ ] Parsing new types string, vector, ...
+- [ ] multiline comment
+- [ ] expression comment
 
 ## integration tests suite for basic lisp programs
 - tests  

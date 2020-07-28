@@ -1,7 +1,7 @@
 use super::forms::*;
 use super::parser::*;
 use super::procedures::*;
-use super::types::{Lambda, Syntax};
+use super::types::{Lambda, Syntax, Transform};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Display, Formatter};
@@ -15,8 +15,8 @@ pub enum Exp {
     Symbol(String),
     List(Vec<Exp>),
     Lambda(Lambda),
-    Procedure(fn(Vec<Exp>, Rc<Env>) -> Result<Exp, Error>),
-    SyntaxForm(fn(Vec<Exp>, Rc<Env>) -> Result<Exp, Error>),
+    Procedure(Transform),
+    SyntaxForm(Transform),
     Syntax(Syntax),
 }
 
@@ -92,59 +92,7 @@ impl Exp {
     }
 }
 
-pub fn exp_from_tokens(mut tokens: &mut Vec<Token>) -> Result<Exp, Error> {
-    if tokens.is_empty() {
-        return Err(Error::SyntaxError("No tokens to process".to_string(), None));
-    }
-
-    let token = tokens.remove(0);
-    match token {
-        Token::LParen => {
-            let mut args = vec![];
-            while tokens.get(0).ok_or(Error::SyntaxError(
-                "Missing closing paren".to_string(),
-                None,
-            ))? != &Token::RParen
-            {
-                args.push(exp_from_tokens(&mut tokens)?);
-            }
-            // remove ')'
-            tokens.remove(0);
-            Ok(Exp::List(args))
-        }
-        Token::Integer(value) => Ok(Exp::Int(value)),
-        Token::Float(value) => Ok(Exp::Float(value)),
-        Token::Symbol(value) => {
-            if &value == "#f" {
-                Ok(Exp::Bool(false))
-            } else if &value == "#t" {
-                Ok(Exp::Bool(true))
-            } else {
-                Ok(Exp::Symbol(value))
-            }
-        }
-        Token::RParen => Err(Error::SyntaxError(
-            "Unexpected closing paren".to_string(),
-            None,
-        )),
-        // Lots of refactor todo around here
-        quoting @ Token::Quote
-        | quoting @ Token::Unquote
-        | quoting @ Token::UnquoteSplicing
-        | quoting @ Token::Quasiquote => {
-            let quoted = exp_from_tokens(&mut tokens)?;
-            let quote_symbol = match quoting {
-                Token::Quote => Exp::Symbol("quote".to_string()),
-                Token::Quasiquote => Exp::Symbol("quasiquote".to_string()),
-                Token::Unquote => Exp::Symbol("unquote".to_string()),
-                Token::UnquoteSplicing => Exp::Symbol("unquote-splicing".to_string()),
-                _ => unreachable!(),
-            };
-            Ok(Exp::List(vec![quote_symbol, quoted]))
-        }
-    }
-}
-
+#[cfg(test)]
 mod test {
     #[allow(unused_imports)]
     use super::*;
@@ -284,6 +232,8 @@ impl Env {
         }
     }
 }
+
+#[cfg(test)]
 mod test_env {
     #[allow(unused_imports)]
     use super::*;
@@ -463,6 +413,7 @@ pub enum Error {
     SyntaxError(String, Option<Exp>),
     NotImplemented,
     SyntaxExpansion,
+    RuntimeError(String)
 }
 
 impl Display for Error {
@@ -478,13 +429,14 @@ impl Display for Error {
                 "No implementation for this case (who knows what 'this' refers to)"
             ),
             Error::SyntaxExpansion => write!(f, "Not enough arguments for syntax expansion"),
+            Error::RuntimeError(text) => write!(f, "Runtime error: {}", text)
         }
     }
 }
 
 #[derive(Debug)]
 pub struct Interpreter {
-    environment: Rc<Env>,
+    pub environment: Rc<Env>,
 }
 
 impl Interpreter {
@@ -505,6 +457,7 @@ impl Interpreter {
         env.insert(">".to_string(), Exp::Procedure(gt));
         env.insert("write".to_string(), Exp::Procedure(write));
         env.insert("dbg".to_string(), Exp::Procedure(dbg));
+        env.insert("load".to_string(), Exp::Procedure(load));
 
         Interpreter {
             environment: Rc::new(env),
@@ -517,8 +470,7 @@ impl Interpreter {
     }
 
     pub fn run(&mut self, code: &str) -> Result<Exp, Error> {
-        let mut tokens = tokenize(code);
-        let expression = exp_from_tokens(&mut tokens)?;
+        let expression = parse(code)?;
         self.eval(expression)
     }
 
@@ -532,6 +484,7 @@ impl Interpreter {
     }
 }
 
+#[cfg(test)]
 mod test_interpreter {
     #[allow(unused_imports)]
     use super::*;
@@ -581,6 +534,10 @@ mod test_interpreter {
         let code = "(if #f 1 0)";
         let res = interpreter.run(code).unwrap();
         assert_eq!(res, Exp::Int(0));
+
+        let code = "(if #f 1)";
+        let res = interpreter.run(code).unwrap();
+        assert_eq!(res, Exp::Bool(false));
     }
 
     #[test]

@@ -29,11 +29,9 @@ pub fn define(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> 
 }
 
 pub fn set(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> {
-    if let Exp::Symbol(name) = &expression[0] {
-        environment.set(name, eval(expression[1].clone(), Rc::clone(&environment))?)
-    } else {
-        Err(Error::SyntaxError("First arg of set! needs to be a symbol".to_string(), Some(expression[0].clone())))
-
+    match &expression[0] {
+        Exp::Symbol(name) => environment.set(name, eval(expression[1].clone(), Rc::clone(&environment))?),
+        _ => Err(Error::SyntaxError("First arg of set! needs to be a symbol".to_string(), Some(expression[0].clone()))),
     }
 }
 
@@ -51,8 +49,10 @@ fn is_true(exp: Exp) -> bool {
 pub fn if_form(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> {
     let exp = if is_true(eval(expression[0].clone(), Rc::clone(&environment))?) {
         &expression[1]
+    } else if let Some(exp) = expression.get(2) {
+        exp
     } else {
-        &expression[2]
+        &Exp::Bool(false)
     };
     Ok(exp.clone())
 }
@@ -61,7 +61,7 @@ pub fn lambda(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> 
     let mut arguments = vec![];
     // (lambda (. a) a) is a valid syntax for now
     // equivalent to (lambda a a)
-    let (args, body) = expression.split_first().unwrap();
+    let (args, body) = expression.split_first().ok_or(Error::SyntaxError("Expecting arguments in lambda definition".to_string(), None))?;
     match args.clone() {
         Exp::List(args) => {
             for arg in args {
@@ -125,7 +125,7 @@ pub fn syntax_rules(mut expression: Vec<Exp>, environment: Rc<Env>) -> Result<Ex
             }
             let pattern = transform[0].clone();
             let template = transform[1].clone();
-            transforms.push((pattern, resolve(template, Rc::clone(&environment), &keywords)));
+            transforms.push((pattern, make_hygenic(template, Rc::clone(&environment), &keywords)));
         } else {
             // not a list form
             return Err(Error::SyntaxError("Syntax rule must be a list (patter template)".to_string(), Some(transformer.clone())));
@@ -137,12 +137,12 @@ pub fn syntax_rules(mut expression: Vec<Exp>, environment: Rc<Env>) -> Result<Ex
 
 // this function replaces symbols with evaluation in the current env
 // practically replace all defined symbols by ((lambda () symbol))
-fn resolve(template: Exp, environment: Rc<Env>, keywords: &Vec<String>) -> Exp {
+fn make_hygenic(template: Exp, environment: Rc<Env>, keywords: &Vec<String>) -> Exp {
     match template {
         Exp::List(expressions) => Exp::List(
             expressions
                 .iter()
-                .map(|e| resolve(e.clone(), Rc::clone(&environment), &keywords))
+                .map(|e| make_hygenic(e.clone(), Rc::clone(&environment), &keywords))
                 .collect(),
             ),
             Exp::Symbol(symbol) => {
