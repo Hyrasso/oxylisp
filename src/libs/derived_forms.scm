@@ -1,6 +1,8 @@
 
 ;; Conditionals
 
+(define (not obj) (if obj #f #t))
+
 (define-syntax cond
   (syntax-rules (else =>)
     ((cond (else result1 result2 ...))
@@ -34,12 +36,12 @@
       (result key))
     ((case key(else result1 result2 ...))
       (begin result1 result2 ...))
-    ((case key((atoms ...) result1 result2 ...))
-      (if (memv key ’(atoms ...))(begin result1 result2 ...)))
     ((case key((atoms ...) => result))
       (if (memv key ’(atoms ...))(result key)))
     ((case key((atoms ...) => result)clause clauses ...)
       (if (memv key ’(atoms ...))(result key)(case key clause clauses ...)))
+    ((case key((atoms ...) result1 result2 ...))
+      (if (memv key ’(atoms ...))(begin result1 result2 ...)))
     ((case key((atoms ...) result1 result2 ...)clause clauses ...)
       (if (memv key ’(atoms ...))(begin result1 result2 ...)(case key clause clauses ...)))))
 
@@ -71,6 +73,9 @@
 
 ;; Bindings
 
+
+; (define-syntax let (syntax-rules ()((let ((name val) ...) body1 body2 ...) '((lambda (name ...) body1 body2 ...) val ...))))
+
 (define-syntax let 
   (syntax-rules ()
     ((let ((name val) ...) body1 body2 ...)
@@ -80,7 +85,7 @@
         tag)
       val ...))))
 
-
+(define <undefined> '(It is an error to access me))
 (define-syntax letrec
   (syntax-rules ()
     ((letrec ((var1 init1) ...) body ...)
@@ -110,8 +115,35 @@
         (let* ((name2 val2) ...)
           body1 body2 ...)))))
 
+(define-syntax letrec*
+  (syntax-rules ()
+    ((letrec* ((var1 init1) ...) body1 body2 ...)
+      (let ((var1 <undefined>) ...)
+        (set! var1 init1)
+        ...
+        (let () body1 body2 ...)))))
 
 ; (define-syntax begin
 ;   (syntax-rules ()
 ;     ((begin exp ...)
 ;       ((lambda () exp ...)))))
+
+
+; pairs stuff
+
+; car
+; cdr
+
+; comp
+(define = equal?)
+
+; Numbers
+(define (zero? n) (equal? n 0))
+
+(define old+ +)
+(define-syntax + 
+  (syntax-rules ()
+    ((_) 0)
+    ((_ n) (old+ n 0))
+    ((_ n1 n2) (old+ n1 n2))
+    ((_ n1 n2 n3 n4 ...) (+ (old+ n1 n2) n3 n4 ...))))
