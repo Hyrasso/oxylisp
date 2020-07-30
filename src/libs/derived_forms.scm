@@ -128,6 +128,21 @@
 ;     ((begin exp ...)
 ;       ((lambda () exp ...)))))
 
+(define-syntax do
+  (syntax-rules (step)
+    ((do ((var init step ...) ...) (test expr ...) command ...)
+    (letrec ((loop
+      (lambda (var ...)
+        (if test
+          (begin (if #f #f) expr ...)
+          (begin 
+            command ... 
+            (loop (do step var step ...) ...))))))
+      (loop init ...)))
+    ((do step x)
+      x)
+    ((do step x y)
+      y)))
 
 ; pairs stuff
 
@@ -136,14 +151,46 @@
 
 ; comp
 (define = equal?)
+(define (>= a b)
+  (or
+    (> a b)
+    (= a b)))
+
+(define (< a b) 
+  (not (>= a b)))
 
 ; Numbers
 (define (zero? n) (equal? n 0))
 
-(define old+ +)
-(define-syntax + 
-  (syntax-rules ()
-    ((_) 0)
-    ((_ n) (old+ n 0))
-    ((_ n1 n2) (old+ n1 n2))
-    ((_ n1 n2 n3 n4 ...) (+ (old+ n1 n2) n3 n4 ...))))
+(define - (lambda (a b) (+ a (* -1 b))))
+
+; hacks
+(define (make-vector x) (quote x))
+
+(define (null? e) (equal? e '()))
+
+(define (list . a) a)
+
+(define cons list)
+
+; futures
+
+; (define-syntax delay
+;   (syntax-rules ()
+;     ((delay expression)
+;       (lambda () expression))))
+
+; (define-syntax force
+;   (syntax-rules ()
+;   ((force promise)
+;     (promise))))
+
+(define (force promise)
+  (if (promise-done? promise)
+    (promise-value promise)
+    (let ((promise* ((promise-value promise))))
+    (unless (promise-done? promise)(promise-update! promise* promise))
+    (force promise))))
+(define promise-done?(lambda (x) (car (car x))))(define promise-value(lambda (x) ((car (cdr (car x))))))(define promise-update!(lambda (new old)(set-car! (car old) (promise-done? new))(set-cdr! (car old) (promise-value new))(set-car! new (car old))))
+(define-syntax delay(syntax-rules ()((delay expression)(make-promise #t (lambda () expression)))))
+(define make-promise(lambda (done? proc)(list (cons done? proc))))

@@ -11,7 +11,7 @@ pub fn add(expression: Vec<Exp>, _environment: Rc<Env>) -> Result<Exp, Error> {
     match expression[..] {
         [Exp::Int(a), Exp::Int(b)] => Ok(Exp::Int(a + b)),
         [Exp::Float(a), Exp::Float(b)] => Ok(Exp::Float(a + b)),
-        _ => Err(Error::SyntaxError("+ expects 2 arguments".to_string(), None))
+        _ => Err(Error::SyntaxError("+ expects 2 arguments".to_string(), Some(Exp::List(expression))))
     }
 }
 
@@ -45,9 +45,6 @@ pub fn gt(expression: Vec<Exp>, _environment: Rc<Env>) -> Result<Exp, Error> {
     }   
 } 
 
-// fn car
-
-// fn cdr
 
 pub fn load(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> {
     if let Exp::Symbol(filename) = &expression[0] {
