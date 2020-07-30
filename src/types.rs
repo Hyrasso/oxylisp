@@ -15,6 +15,7 @@ pub struct Lambda {
     pub body: Vec<Exp>,
     pub arguments: Vec<String>,
     pub environment: Rc<Env>,
+    pub is_hacky_closure: bool
 }
 
 impl Lambda {
@@ -23,6 +24,7 @@ impl Lambda {
             body,
             arguments,
             environment,
+            is_hacky_closure: false
         }
     }
 }

@@ -89,3 +89,7 @@ lisp in lisp, metacircular thingy : https://mitpress.mit.edu/sites/default/files
     ```
     Having the list on the heap would be a solution, this code is also data thing is weird 
 - syntax rule ((_ a ...) (display a)) is valid (prints the first a matched), it should be an error, something like ellipsis expected
+- ```scheme
+    (define-syntax add (syntax-rules () ((_ a b) (+ a b)) ((_) (add 1 2))))
+    (+) ; 
+    ```

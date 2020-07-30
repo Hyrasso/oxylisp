@@ -31,6 +31,15 @@ pub fn define(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> 
 pub fn set(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> {
     match &expression[0] {
         Exp::Symbol(name) => environment.set(name, eval(expression[1].clone(), Rc::clone(&environment))?),
+        // This is in the case where set! first arg is a lambda hack to keep ref in syntax expansion
+        Exp::List(exp) if exp.len() == 1 => {
+            if let Exp::Lambda(lambda) = &exp[0] {
+                if lambda.is_hacky_closure {
+                    return lambda.environment.set(lambda.body[0].get_symbol().unwrap(), eval(expression[1].clone(), Rc::clone(&environment))?);
+                }
+            }
+            Err(Error::SyntaxError("First arg of set! needs to be a symbol".to_string(), Some(expression[0].clone())))
+        },
         _ => Err(Error::SyntaxError("First arg of set! needs to be a symbol".to_string(), Some(expression[0].clone()))),
     }
 }
@@ -52,9 +61,10 @@ pub fn if_form(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error>
     } else if let Some(exp) = expression.get(2) {
         exp
     } else {
-        &Exp::Bool(false)
+        &Exp::Bool(true)
     };
-    Ok(exp.clone())
+    // TODO: make this tail recursive?
+    eval(exp.clone(), environment)
 }
 
 pub fn lambda(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> {
@@ -85,6 +95,7 @@ pub fn lambda(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> 
 
 pub fn define_syntax(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> {
     if let [Exp::Symbol(key), syntax] = &expression[..2] {
+        // TODO: do not put syntax name in a closure to allow recursive stuff 
         if let Exp::Syntax(transform) = eval(syntax.clone(), Rc::clone(&environment))? {
             environment.insert(key.to_string(), Exp::Syntax(transform));
         } else {
@@ -149,16 +160,33 @@ fn make_hygenic(template: Exp, environment: Rc<Env>, keywords: &Vec<String>) -> 
             // creates closure to resolve the symbol to the correct value once expanded in different env
             if !keywords.contains(&symbol) && environment.get(&symbol).is_ok() {
                 Exp::List(vec![
-                    Exp::Lambda(Lambda::new(
-                        vec![Exp::Symbol(symbol)],
-                        vec![],
-                        Rc::clone(&environment),
-                    ))
+                    Exp::Lambda(Lambda {
+                        body: vec![Exp::Symbol(symbol)],
+                        arguments: vec![],
+                        environment: Rc::clone(&environment),
+                        is_hacky_closure: true
+                    })
                 ])
             } else {
                 Exp::Symbol(symbol)
             }
         }
         constant => constant,
+    }
+}
+
+
+pub fn car(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> {
+    match eval(expression[0].clone(), environment)? {
+        Exp::List(l) => Ok(l[0].clone()),
+        _ => Err(Error::SyntaxError("car expects a list as argument".to_string(), None))
+    }
+}
+
+
+pub fn cdr(expression: Vec<Exp>, environment: Rc<Env>) -> Result<Exp, Error> {
+    match eval(expression[0].clone(), environment)? {
+        Exp::List(l) => Ok(Exp::List(l[1..].to_vec())),
+        _ => Err(Error::SyntaxError("cdr expects a list as argument".to_string(), None))
     }
 }
