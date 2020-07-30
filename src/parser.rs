@@ -20,6 +20,7 @@ fn remove_comments(text: &str) -> String {
 pub fn tokenize(text: &str) -> Vec<Token> {
     let text = remove_comments(text);
     text.replace("(", " ( ")
+        .replace("# (", "#(")
         .replace(")", " ) ")
         .replace("'", " ' ")
         .replace("`", " ` ")
@@ -37,6 +38,7 @@ pub enum Token {
     Float(f64),
     Symbol(String),
     LParen,
+    VectorStart,
     RParen,
     Quote,
     Quasiquote,
@@ -54,6 +56,7 @@ impl From<&str> for Token {
         } else {
             match token {
                 "(" => Token::LParen,
+                "#(" => Token::VectorStart,
                 ")" => Token::RParen,
                 "'" => Token::Quote,
                 "`" => Token::Quasiquote,
@@ -100,6 +103,15 @@ pub fn exp_from_tokens(mut tokens: &mut Vec<Token>) -> Result<Exp, Error> {
             "Unexpected closing paren".to_string(),
             None,
         )),
+        Token::VectorStart => {
+            // refactor parse to produce vectorstart and lparen token
+            tokens.insert(0, Token::LParen);
+            let vector = exp_from_tokens(&mut tokens)?;
+            match vector {
+                Exp::List(_) => Ok(Exp::List(vec!["quote".into(), vector])),
+                _ => Err(Error::SyntaxError("# vector declaration must be followed by a list".to_string(), Some(vector)))
+            }
+        },
         // Lots of refactor todo around here
         quoting @ Token::Quote
         | quoting @ Token::Unquote

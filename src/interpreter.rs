@@ -294,12 +294,11 @@ pub fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                 let (first, rest) = expressions.split_first_mut().unwrap();
                 let mut rest = rest.to_vec();
                 match first {
-                    // Exp::Syntax(Syntax) = {
-                    //     unimplemented!();
-                    // },
                     // all symbol are resolved during syntax definition
                     // (new-define a b) (define a b) -> (Exp::proc(define) Symbol(a) symbol(b))
-                    Exp::SyntaxForm(transform) => transform(rest, Rc::clone(&environment)),
+                    Exp::SyntaxForm(transform) => {
+                        return transform(rest, Rc::clone(&environment));
+                    },
                     Exp::Syntax(syntax) => {
                         // replace happens in get template
                         expression = syntax.get_template(Exp::List(rest))?;
@@ -307,7 +306,6 @@ pub fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                     }
                     Exp::Procedure(proc) => {
                         let mut args = vec![];
-                        // drain?
                         for value in rest.iter() {
                             args.push(eval(value.clone(), Rc::clone(&environment))?);
                         }
@@ -450,6 +448,9 @@ impl Interpreter {
         env.insert("quote".to_string(), Exp::SyntaxForm(quote));
         env.insert("define-syntax".to_string(), Exp::SyntaxForm(define_syntax));
         env.insert("syntax-rules".to_string(), Exp::SyntaxForm(syntax_rules));
+
+        env.insert("car".to_string(), Exp::SyntaxForm(car));
+        env.insert("cdr".to_string(), Exp::SyntaxForm(cdr));
 
         env.insert("equal?".to_string(), Exp::Procedure(equal));
         env.insert("+".to_string(), Exp::Procedure(add));
