@@ -9,11 +9,13 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Exp {
+    Nil,
     Int(i64),
     Float(f64),
-    Bool(bool),
+    Bool(bool), // TODO: only the #f symbol is false
     Symbol(String),
     List(Vec<Exp>),
+    // Cons(Exp, Exp),
     Lambda(Lambda),
     Procedure(Transform),
     SyntaxForm(Transform),
@@ -30,6 +32,7 @@ impl From<&str> for Exp {
 impl Display for Exp {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Exp::Nil => write!(f, "nil"),
             Exp::Int(value) => write!(f, "{}", value),
             Exp::Float(value) => write!(f, "{}", value),
             Exp::Bool(value) => {
@@ -294,6 +297,7 @@ pub fn eval(expression: Exp, environment: Rc<Env>) -> Result<Exp, Error> {
                 let (first, rest) = expressions.split_first_mut().unwrap();
                 let mut rest = rest.to_vec();
                 match first {
+                    Exp::Nil => return Err(Error::RuntimeError("nil cannot be called as a function".to_string())),
                     // all symbol are resolved during syntax definition
                     // (new-define a b) (define a b) -> (Exp::proc(define) Symbol(a) symbol(b))
                     Exp::SyntaxForm(transform) => {

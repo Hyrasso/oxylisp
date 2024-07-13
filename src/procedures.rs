@@ -28,7 +28,9 @@ pub fn write(expression: Vec<Exp>, _environment: Rc<Env>) -> Result<Exp, Error> 
     if expression.len() == 0 {
         return Err(Error::SyntaxError("Not enough args for write".to_string(), None));
     }
-    print!("{}", expression[0]);
+    for exp in expression {
+        print!("{}", exp);
+    }
     Ok(Exp::Bool(true))
 }
 
